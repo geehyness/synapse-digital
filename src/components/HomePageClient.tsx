@@ -21,7 +21,7 @@ const DEFAULT_CONFIG = {
   momentumDecay: 0.8,
   scrollSensitivity: 0.001, // Default scroll sensitivity
   glowIntensity: 0.5,
-  connectionChance: 0.02,
+  connectionChance: 0.3,
   maxConnectionDistance: 100,
   rotationSpeed: 0.001,
   trailOpacity: 0.5,
@@ -139,7 +139,7 @@ const HomePageClient = () => {
         ctx.translate(this.x, this.y);
         ctx.rotate(this.rotation);
         ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-        ctx.shadowBlur = this.size * configRef.current.glowIntensity * 3;
+        ctx.shadowBlur = this.size * configRef.current.glowIntensity *2;
 
         if (this.type === 'cross') {
           this.drawCross(ctx);
