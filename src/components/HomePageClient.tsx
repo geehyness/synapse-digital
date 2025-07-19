@@ -6,31 +6,30 @@ import {
   VStack, HStack, Icon, Divider, useTheme, Tag, TagLabel,
   useBreakpointValue, Avatar, Stack, IconButton, Slider, SliderTrack,
   SliderFilledTrack, SliderThumb, FormControl, FormLabel, Collapse,
-  Switch,
-  useDisclosure
+  Switch, useDisclosure // Import useDisclosure here
 } from '@chakra-ui/react';
 import { FaChevronDown, FaRocket, FaLightbulb, FaChartLine, FaCode, FaMobileAlt, FaServer, FaQuoteLeft, FaStar, FaArrowRight, FaCog, FaTimes } from 'react-icons/fa';
 import { FiGithub, FiLinkedin, FiTwitter, FiMenu, FiX } from 'react-icons/fi';
 
 const DEFAULT_CONFIG = {
-  starCount: 100,
+  starCount: 50,
   minSize: 0.5,
-  maxSize: 20,
+  maxSize: 10,
   minDepth: 0.1,
-  maxDepth: 50.0,
+  maxDepth: 100.0,
   baseSpeed: 0,
   momentumDecay: 0.8,
-  scrollSensitivity: 0.01,
-  glowIntensity: 0.5,
+  scrollSensitivity: 0.01, // Default scroll sensitivity
+  glowIntensity: 0.1,
   connectionChance: 0.02,
   maxConnectionDistance: 100,
   rotationSpeed: 0.001,
   trailOpacity: 0.5,
   blackHole: {
     isEnabled: true,
-    mass: 100,
+    mass: 60,
     gravity: 0.18,
-    attractionRadius: 520,
+    attractionRadius: 300,
     spin: 1,
     accretionDisk: true
   }
@@ -43,7 +42,7 @@ const HomePageClient = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const contentSectionRef = useRef<HTMLDivElement>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { isOpen: controlsOpen, onToggle: toggleControls } = useDisclosure();
+  const { isOpen: controlsOpen, onToggle: toggleControls } = useDisclosure(); // Use useDisclosure
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const configRef = useRef(config);
 
@@ -200,8 +199,9 @@ const HomePageClient = () => {
 
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
+      // Stars move slower when scrolling if scrollSensitivity is lower
       const scrollDelta = (lastScrollY - currentScrollY) * configRef.current.scrollSensitivity;
-      momentum += scrollDelta/5;
+      momentum += scrollDelta;
       lastScrollY = currentScrollY;
     };
     window.addEventListener('scroll', handleScroll);
@@ -713,13 +713,14 @@ const HomePageClient = () => {
                   </Text>
                 </FormControl>
 
+                {/* New Scroll Sensitivity Control */}
                 <FormControl>
                   <FormLabel color="gray.300" fontSize="sm">Scroll Sensitivity</FormLabel>
                   <Slider
                     value={config.scrollSensitivity}
-                    min={0.01}
-                    max={0.5}
-                    step={0.01}
+                    min={0.001} // Lower min to allow for very slow movement
+                    max={0.1} // Adjusted max for finer control, original was 0.5
+                    step={0.001} // Finer step for precise control
                     onChange={(val) => handleConfigChange('scrollSensitivity', val)}
                   >
                     <SliderTrack bg="rgba(255, 255, 255, 0.1)">
@@ -728,7 +729,7 @@ const HomePageClient = () => {
                     <SliderThumb />
                   </Slider>
                   <Text color="gray.400" fontSize="sm" textAlign="right">
-                    {config.scrollSensitivity.toFixed(2)}
+                    {config.scrollSensitivity.toFixed(3)}
                   </Text>
                 </FormControl>
               </VStack>
