@@ -6,7 +6,8 @@ import {
   VStack, HStack, Icon, Divider, useTheme, Tag, TagLabel,
   useBreakpointValue, Avatar, Stack, IconButton, Slider, SliderTrack,
   SliderFilledTrack, SliderThumb, FormControl, FormLabel, Collapse,
-  Switch
+  Switch,
+  useDisclosure
 } from '@chakra-ui/react';
 import { FaChevronDown, FaRocket, FaLightbulb, FaChartLine, FaCode, FaMobileAlt, FaServer, FaQuoteLeft, FaStar, FaArrowRight, FaCog, FaTimes } from 'react-icons/fa';
 import { FiGithub, FiLinkedin, FiTwitter, FiMenu, FiX } from 'react-icons/fi';
@@ -1196,7 +1197,3 @@ const HomePageClient = () => {
 };
 
 export default HomePageClient;
-
-function useDisclosure(): { isOpen: any; onToggle: any; } {
-  throw new Error('Function not implemented.');
-}
