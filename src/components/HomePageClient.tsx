@@ -13,7 +13,7 @@ import { FaChevronDown, FaRocket, FaLightbulb, FaChartLine, FaCode, FaMobileAlt,
 import { FiGithub, FiLinkedin, FiTwitter, FiMenu, FiX } from 'react-icons/fi';
 
 const DEFAULT_CONFIG = {
-  starCount: 120,
+  starCount: 100,
   minSize: 0.5,
   maxSize: 20,
   minDepth: 0.1,
@@ -21,16 +21,16 @@ const DEFAULT_CONFIG = {
   baseSpeed: 0,
   momentumDecay: 0.8,
   scrollSensitivity: 0.01,
-  glowIntensity: 1,
+  glowIntensity: 0.5,
   connectionChance: 0.02,
   maxConnectionDistance: 100,
   rotationSpeed: 0.001,
   trailOpacity: 0.5,
   blackHole: {
     isEnabled: true,
-    mass: 60,
+    mass: 100,
     gravity: 0.18,
-    attractionRadius: 300,
+    attractionRadius: 520,
     spin: 1,
     accretionDisk: true
   }
