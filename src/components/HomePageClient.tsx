@@ -201,7 +201,7 @@ const HomePageClient = () => {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
       const scrollDelta = (lastScrollY - currentScrollY) * configRef.current.scrollSensitivity;
-      momentum += scrollDelta;
+      momentum += scrollDelta/5;
       lastScrollY = currentScrollY;
     };
     window.addEventListener('scroll', handleScroll);
