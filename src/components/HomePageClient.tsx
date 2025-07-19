@@ -12,15 +12,15 @@ import { FaChevronDown, FaRocket, FaLightbulb, FaChartLine, FaCode, FaMobileAlt,
 import { FiGithub, FiLinkedin, FiTwitter, FiMenu, FiX } from 'react-icons/fi';
 
 const DEFAULT_CONFIG = {
-  starCount: 50,
+  starCount: 150,
   minSize: 0.5,
-  maxSize: 10,
+  maxSize: 20,
   minDepth: 0.1,
-  maxDepth: 100.0,
+  maxDepth: 50.0,
   baseSpeed: 0,
   momentumDecay: 0.8,
-  scrollSensitivity: 0.01, // Default scroll sensitivity
-  glowIntensity: 0.1,
+  scrollSensitivity: 0.001, // Default scroll sensitivity
+  glowIntensity: 0.5,
   connectionChance: 0.02,
   maxConnectionDistance: 100,
   rotationSpeed: 0.001,
@@ -29,7 +29,7 @@ const DEFAULT_CONFIG = {
     isEnabled: true,
     mass: 60,
     gravity: 0.18,
-    attractionRadius: 300,
+    attractionRadius: 520,
     spin: 1,
     accretionDisk: true
   }
