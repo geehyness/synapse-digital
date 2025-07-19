@@ -12,12 +12,12 @@ import { FaChevronDown, FaRocket, FaLightbulb, FaChartLine, FaCode, FaMobileAlt,
 import { FiGithub, FiLinkedin, FiTwitter, FiMenu, FiX } from 'react-icons/fi';
 
 const DEFAULT_CONFIG = {
-  starCount: 150,
-  minSize: 0.5,
-  maxSize: 20,
+  starCount: 100,
+  minSize: 2,
+  maxSize: 10,
   minDepth: 0.1,
   maxDepth: 50.0,
-  baseSpeed: 0,
+  baseSpeed: 0.01,
   momentumDecay: 0.8,
   scrollSensitivity: 0.001, // Default scroll sensitivity
   glowIntensity: 0.5,
@@ -27,7 +27,7 @@ const DEFAULT_CONFIG = {
   trailOpacity: 0.5,
   blackHole: {
     isEnabled: true,
-    mass: 60,
+    mass: 100,
     gravity: 0.18,
     attractionRadius: 520,
     spin: 1,
