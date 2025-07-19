@@ -17,7 +17,7 @@ const DEFAULT_CONFIG = {
   maxSize: 10,
   minDepth: 0.1,
   maxDepth: 50.0,
-  baseSpeed: 0.01,
+  baseSpeed: 0.00001,
   momentumDecay: 0.8,
   scrollSensitivity: 0.001, // Default scroll sensitivity
   glowIntensity: 0.5,
@@ -35,6 +35,7 @@ const DEFAULT_CONFIG = {
   }
 };
 
+
 const MotionBox = motion(Box);
 
 const HomePageClient = () => {
@@ -42,7 +43,7 @@ const HomePageClient = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const contentSectionRef = useRef<HTMLDivElement>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { isOpen: controlsOpen, onToggle: toggleControls } = useDisclosure(); // Use useDisclosure
+  const { isOpen: controlsOpen, onToggle: toggleControls } = useDisclosure();  // Use useDisclosure
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const configRef = useRef(config);
 
