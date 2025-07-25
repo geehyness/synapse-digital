@@ -220,7 +220,7 @@ export default function App() {
         world.defaultContactMaterial.restitution = 0.1;
 
         // --- Realistic Ground Terrain (Simplified to a flat plane) ---
-        const planeSize = 30; // 30m x 30m square ground
+        const planeSize = 100; // 30m x 30m square ground
         const segments = 2; // Minimal segments for a flat square
 
         const heights2D = generateFlatPlaneHeights(planeSize, planeSize, segments); // Call the new function
