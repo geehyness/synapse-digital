@@ -5,6 +5,7 @@ import { Box, VStack, Button, Text, useBreakpointValue } from "@chakra-ui/react"
 import * as THREE from "three";
 import * as CANNON from "cannon";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js"; // Corrected import path
 
 // Hook to detect portrait orientation
 function useIsPortrait() {
@@ -20,53 +21,58 @@ function useIsPortrait() {
     return isPortrait;
 }
 
-// Function to generate realistic hills
-function generateHills(width: number, depth: number, segments: number, amplitude: number): number[][] {
+// Function to generate realistic hills with a flat center
+function generateHills(width: number, depth: number, segments: number, amplitude: number, flatSize: number): number[][] {
     const heights: number[][] = [];
+    const halfWidth = width / 2;
+    const halfDepth = depth / 2;
+    const segmentWidth = width / segments;
+    const segmentDepth = depth / segments;
+
+    const flatHalfSize = flatSize / 2; // Half size of the flat area (e.g., 10 for a 20x20 flat area)
+    const transitionZone = 20; // Meters over which to smoothly transition from flat to hills
+
     for (let i = 0; i <= segments; i++) {
         heights[i] = [];
         for (let j = 0; j <= segments; j++) {
-            heights[i][j] = Math.sin(i * 0.2) * Math.cos(j * 0.2) * amplitude;
-        }
-    }
-    return heights;
+            const x = (j * segmentWidth) - halfWidth; // World X coordinate
+            const z = (i * segmentDepth) - halfDepth; // World Z coordinate
 
-    /* Revert to this original code if the flat terrain works:
-    // Generate heightfield data
-    for (let i = 0; i <= segments; i++) {
-        const row = [];
-        for (let j = 0; j <= segments; j++) {
-            // Realistic hill generation using multiple noise frequencies
-            const x = (j - segments / 2) * size;
-            const z = (i - segments / 2) * size;
+            let y = 0; // Default height for the flat area
 
-            // Base terrain with large hills
-            let y = amplitude * (
+            // Calculate base terrain height using multiple noise frequencies
+            // This will produce values roughly between -amplitude and +amplitude
+            let noiseHeight = amplitude * (
                 Math.sin(x / 40) * Math.cos(z / 40) +
                 0.5 * Math.sin(x / 20) * Math.cos(z / 20) +
                 0.25 * Math.sin(x / 10) * Math.cos(z / 10)
             );
 
-            // Add some random variation
-            y += 0.1 * amplitude * Math.random();
+            // Add some random variation, centered around 0
+            noiseHeight += 0.1 * amplitude * (Math.random() - 0.5);
 
-            row.push(y);
+            // Ensure noiseHeight is non-negative if we want hills to go up from flat.
+            // If you want valleys below the flat plane, remove this line.
+            noiseHeight = Math.max(0, noiseHeight); // Only positive heights for hills
+
+            // Calculate distance to the edge of the flat square
+            const dx = Math.max(0, Math.abs(x) - flatHalfSize);
+            const dz = Math.max(0, Math.abs(z) - flatHalfSize);
+            const distanceToFlatEdge = Math.sqrt(dx * dx + dz * dz);
+
+            // Apply smooth transition from flat (y=0) to hilly terrain
+            if (distanceToFlatEdge < transitionZone) {
+                const t = distanceToFlatEdge / transitionZone; // Normalized transition factor (0 at flat edge, 1 at transitionZone away)
+                const smoothT = t * t * (3 - 2 * t); // Smoothstep function for a smoother blend
+                y = noiseHeight * smoothT;
+            } else {
+                y = noiseHeight;
+            }
+            heights[i][j] = y;
         }
-        heights.push(row);
     }
     return heights;
-    */
 }
-
-// Sky color gradients based on time of day
-const SKY_COLORS = {
-    midnight: new THREE.Color(0x00001a), // Deep blue
-    dawn: new THREE.Color(0x8c5b9a),     // Purple
-    sunrise: new THREE.Color(0xff6b6b),   // Orange-red
-    noon: new THREE.Color(0x87ceeb),      // Light blue
-    sunset: new THREE.Color(0xff4500),    // Red-orange
-    dusk: new THREE.Color(0x483d8b)       // Dark purple
-};
 
 export default function App() {
     // Refs for Three.js and Cannon.js objects
@@ -78,9 +84,6 @@ export default function App() {
     const playerBodyRef = useRef<CANNON.Body | null>(null);
     const gltfModelRef = useRef<THREE.Object3D | null>(null);
     const modelBodiesRef = useRef<CANNON.Body[]>([]);
-    const sunLightRef = useRef<THREE.DirectionalLight | null>(null);
-    const ambientLightRef = useRef<THREE.AmbientLight | null>(null);
-    const hemisphereLightRef = useRef<THREE.HemisphereLight | null>(null);
 
     // Refs for camera controls
     const yaw = useRef(new THREE.Object3D());
@@ -100,334 +103,12 @@ export default function App() {
     const isPortrait = useIsPortrait();
     const isControlsVisible = useBreakpointValue({ base: true, md: false });
 
-    // Day-night cycle state
-    const timeOfDay = useRef(12); // Start at noon (12:00)
-    const timeSpeed = useRef(0.01); // How fast time progresses (0.01 = 1 minute per frame)
-
     // Animation frame ID for cleanup
     const animationFrameId = useRef<number | null>(null);
 
-    // Initial setup for Three.js and Cannon.js
-    const initThreeAndCannon = useCallback(() => {
-        console.log("initThreeAndCannon called");
-        console.log("mountRef:", mountRef.current);
-        if (!mountRef.current || sceneRef.current) {
-            return;
-        }
-
-        console.log("App.tsx: Initializing Three.js and Cannon.js...");
-
-        // Three.js Scene
-        const scene = new THREE.Scene();
-        sceneRef.current = scene;
-        scene.background = SKY_COLORS.noon; // Start with noon sky
-
-        // Debug Cube
-        const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
-        const boxMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-        const box = new THREE.Mesh(boxGeometry, boxMaterial);
-        box.position.set(0, 0.5, 0);
-        scene.add(box);
-
-        // Camera
-        const camera = new THREE.PerspectiveCamera(
-            75,
-            window.innerWidth / window.innerHeight,
-            0.1,
-            1000
-        );
-        cameraRef.current = camera;
-        camera.position.set(0, 10, 30);
-        camera.lookAt(new THREE.Vector3(0, 0, 0));
-
-        yaw.current.rotation.y = 0;
-        yaw.current.add(pitch.current);
-        pitch.current.add(camera);
-        scene.add(yaw.current);
-
-        // Renderer
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        rendererRef.current = renderer;
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.shadowMap.enabled = true;
-        mountRef.current.appendChild(renderer.domElement);
-
-        // Lighting
-        const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444422, 0.3);
-        scene.add(hemisphereLight);
-        hemisphereLightRef.current = hemisphereLight;
-
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
-        scene.add(ambientLight);
-        ambientLightRef.current = ambientLight;
-
-        const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
-        sunLight.position.set(200, 200, 100);
-        sunLight.castShadow = true;
-        sunLight.shadow.mapSize.width = 1024;
-        sunLight.shadow.mapSize.height = 1024;
-        sunLight.shadow.camera.near = 0.5;
-        sunLight.shadow.camera.far = 500;
-        scene.add(sunLight);
-        sunLightRef.current = sunLight;
-
-        // Optional sun mesh (commented)
-        // const sunSphere = new THREE.Mesh(
-        //     new THREE.SphereGeometry(5, 16, 16),
-        //     new THREE.MeshBasicMaterial({ color: 0xffff00 })
-        // );
-        // sunSphere.position.copy(sunLight.position);
-        // scene.add(sunSphere);
-
-        // Cannon.js World
-        const world = new CANNON.World();
-        worldRef.current = world;
-        world.gravity.set(0, -9.82, 0);
-        world.broadphase = new CANNON.SAPBroadphase(world);
-        world.defaultContactMaterial.friction = 0.5;
-        world.defaultContactMaterial.restitution = 0.1;
-
-        // --- Flat Plane ---
-        const planeSize = 100;
-
-        // Three.js Ground Plane
-        const planeGeometry = new THREE.PlaneGeometry(planeSize, planeSize);
-        const planeMaterial = new THREE.MeshStandardMaterial({ color: 0x3d8c40 });
-        const groundMesh = new THREE.Mesh(planeGeometry, planeMaterial);
-        groundMesh.rotation.x = -Math.PI / 2;
-        groundMesh.receiveShadow = true;
-        scene.add(groundMesh);
-
-        // Cannon.js Ground Body
-        const groundShape = new CANNON.Plane();
-        const groundBody = new CANNON.Body({ mass: 0, shape: groundShape });
-        groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to lie flat
-        world.addBody(groundBody);
-
-        // Player Body
-        const playerBody = new CANNON.Body({
-            mass: 5,
-            shape: new CANNON.Sphere(1.0),
-            position: new CANNON.Vec3(0, 5, 10),
-        });
-        playerBody.linearDamping = 0.9;
-        world.addBody(playerBody);
-
-        console.log("App.tsx: Three.js and Cannon.js initialized.");
-    }, []);
-
-
-
-    // Update day-night cycle
-    const updateDayNightCycle = useCallback(() => {
-        const scene = sceneRef.current;
-        const sunLight = sunLightRef.current;
-        const ambientLight = ambientLightRef.current;
-        const hemisphereLight = hemisphereLightRef.current;
-
-        if (!scene || !sunLight || !ambientLight || !hemisphereLight) return;
-
-        // Progress time
-        timeOfDay.current = (timeOfDay.current + timeSpeed.current) % 24;
-
-        // Calculate sun position (orbit around Y axis)
-        const sunAngle = (timeOfDay.current / 24) * Math.PI * 2;
-        const sunDistance = 200;
-        const sunX = Math.cos(sunAngle) * sunDistance;
-        const sunY = Math.sin(sunAngle) * sunDistance + 50; // Offset vertically
-        const sunZ = Math.sin(sunAngle * 0.5) * sunDistance;
-
-        sunLight.position.set(sunX, sunY, sunZ);
-
-        // Update sun color based on time of day
-        let sunColor = new THREE.Color();
-        let skyColor = new THREE.Color();
-        let ambientIntensity = 0.3;
-        let sunIntensity = 1.0;
-
-        if (timeOfDay.current >= 5 && timeOfDay.current < 6) {
-            // Dawn (5-6)
-            const t = (timeOfDay.current - 5);
-            sunColor = SKY_COLORS.dawn.clone().lerp(SKY_COLORS.sunrise, t);
-            skyColor = SKY_COLORS.dawn.clone().lerp(SKY_COLORS.sunrise, t);
-        } else if (timeOfDay.current >= 6 && timeOfDay.current < 8) {
-            // Sunrise (6-8)
-            const t = (timeOfDay.current - 6) / 2;
-            sunColor = SKY_COLORS.sunrise.clone().lerp(SKY_COLORS.noon, t);
-            skyColor = SKY_COLORS.sunrise.clone().lerp(SKY_COLORS.noon, t);
-        } else if (timeOfDay.current >= 8 && timeOfDay.current < 17) {
-            // Day (8-17)
-            sunColor = SKY_COLORS.noon;
-            skyColor = SKY_COLORS.noon;
-        } else if (timeOfDay.current >= 17 && timeOfDay.current < 19) {
-            // Sunset (17-19)
-            const t = (timeOfDay.current - 17) / 2;
-            sunColor = SKY_COLORS.noon.clone().lerp(SKY_COLORS.sunset, t);
-            skyColor = SKY_COLORS.noon.clone().lerp(SKY_COLORS.sunset, t);
-        } else if (timeOfDay.current >= 19 && timeOfDay.current < 20) {
-            // Dusk (19-20)
-            const t = (timeOfDay.current - 19);
-            sunColor = SKY_COLORS.sunset.clone().lerp(SKY_COLORS.dusk, t);
-            skyColor = SKY_COLORS.sunset.clone().lerp(SKY_COLORS.dusk, t);
-        } else {
-            // Night (20-5)
-            sunColor = SKY_COLORS.midnight;
-            skyColor = SKY_COLORS.midnight;
-            ambientIntensity = 0.1;
-            sunIntensity = 0.1;
-        }
-
-        // Adjust intensity based on sun position
-        const heightFactor = Math.max(0, Math.sin(sunAngle));
-        sunLight.intensity = sunIntensity * heightFactor;
-        ambientLight.intensity = ambientIntensity * (0.5 + 0.5 * heightFactor);
-        hemisphereLight.intensity = 0.3 * heightFactor;
-
-        // Set colors
-        scene.background = skyColor;
-        sunLight.color.copy(sunColor);
-    }, []);
-
-    // Animation loop
-    const animate = useCallback(() => {
-        console.log("Animating frame");
-
-        animationFrameId.current = requestAnimationFrame(animate);
-
-        const scene = sceneRef.current;
-        const camera = cameraRef.current;
-        const renderer = rendererRef.current;
-        const world = worldRef.current;
-        const playerBody = playerBodyRef.current;
-
-        if (!scene || !camera || !renderer || !world || !playerBody) {
-            return;
-        }
-        console.log("Player Y position:", playerBody.position.y.toFixed(2));
-        // Update day-night cycle
-        updateDayNightCycle();
-
-        // Update physics
-        const fixedTimeStep = 1 / 60;
-        const maxSubSteps = 10;
-        world.step(fixedTimeStep, performance.now() / 1000, maxSubSteps);
-
-        // Sync player body with camera
-        yaw.current.position.set(
-            playerBody.position.x,
-            playerBody.position.y,
-            playerBody.position.z
-        );
-
-        // Apply movement with realistic walking speed (1.4 m/s)
-        const moveSpeed = 1.4; // Realistic walking speed in m/s
-        const velocity = new CANNON.Vec3(0, playerBody.velocity.y, 0);
-
-        // Calculate movement direction based on camera orientation
-        const forwardVector = new THREE.Vector3(0, 0, -1);
-        forwardVector.applyQuaternion(yaw.current.quaternion);
-        forwardVector.y = 0;
-        forwardVector.normalize();
-
-        const rightVector = new THREE.Vector3(1, 0, 0);
-        rightVector.applyQuaternion(yaw.current.quaternion);
-        rightVector.y = 0;
-        rightVector.normalize();
-
-        // Calculate movement vector based on input
-        if (moveForward.current) {
-            velocity.x += forwardVector.x * moveSpeed;
-            velocity.z += forwardVector.z * moveSpeed;
-        }
-        if (moveBackward.current) {
-            velocity.x -= forwardVector.x * moveSpeed;
-            velocity.z -= forwardVector.z * moveSpeed;
-        }
-        if (moveLeft.current) {
-            velocity.x -= rightVector.x * moveSpeed;
-            velocity.z -= rightVector.z * moveSpeed;
-        }
-        if (moveRight.current) {
-            velocity.x += rightVector.x * moveSpeed;
-            velocity.z += rightVector.z * moveSpeed;
-        }
-
-        // Apply velocity to player body
-        playerBody.velocity.x = velocity.x;
-        playerBody.velocity.z = velocity.z;
-
-        // Apply look delta
-        if (lookDelta.current.x !== 0 || lookDelta.current.y !== 0) {
-            yaw.current.rotation.y -= lookDelta.current.x * 0.005;
-            pitch.current.rotation.x -= lookDelta.current.y * 0.005;
-            pitch.current.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch.current.rotation.x));
-            lookDelta.current.x = lookDelta.current.y = 0;
-        }
-
-        // Render the scene
-        renderer.render(scene, camera);
-    }, [updateDayNightCycle]);
-
-    // Effect for initializing Three.js and Cannon.js
-    useEffect(() => {
-        initThreeAndCannon();
-        animationFrameId.current = requestAnimationFrame(animate); // Start animation loop
-
-        // Cleanup function
-        return () => {
-            console.log("App.tsx: Three.js resources disposed.");
-            if (animationFrameId.current) {
-                cancelAnimationFrame(animationFrameId.current);
-            }
-            if (rendererRef.current) {
-                rendererRef.current.dispose();
-                // Remove canvas from DOM
-                if (mountRef.current && rendererRef.current.domElement) {
-                    mountRef.current.removeChild(rendererRef.current.domElement);
-                }
-            }
-            // Nullify refs for proper cleanup
-            sceneRef.current = null;
-            cameraRef.current = null;
-            rendererRef.current = null;
-            worldRef.current = null;
-            playerBodyRef.current = null;
-            gltfModelRef.current = null;
-            modelBodiesRef.current = [];
-        };
-    }, [initThreeAndCannon, animate]);
-
-    // Load model list from public/models/houses/index.json
-    useEffect(() => {
-        const fetchModelList = async () => {
-            try {
-                const response = await fetch("/models/houses/index.json");
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const data: string[] = await response.json();
-                setModelList(data);
-                console.log("App.tsx: Model list loaded successfully:", data);
-                if (data.length > 0) {
-                    setSelectedModelIndex(0);
-                    console.log("App.tsx: Initial model set to index 0.");
-                } else {
-                    console.log("App.tsx: No models available yet, skipping initial model load.");
-                }
-            } catch (error) {
-                console.error("App.tsx: Failed to fetch model list:", error);
-            }
-        };
-        fetchModelList();
-    }, []);
-
-    // Effect to trigger model load when selectedModelIndex or modelList changes
-    const loadModel = useCallback(async (modelName: string, modelIndex: number) => {
+    const loadModel = useCallback(async (modelName: string, modelIndex: number, scene: THREE.Scene, world: CANNON.World) => {
         console.log("Attempting to load model:", modelName);
 
-        const scene = sceneRef.current;
-        const world = worldRef.current;
         if (!scene || !world) {
             console.log("loadModel: Scene or World not initialized yet. Skipping model load.");
             return;
@@ -520,11 +201,326 @@ export default function App() {
         }
     }, []);
 
+    // Initial setup for Three.js and Cannon.js
+    const initThreeAndCannon = useCallback(() => {
+        console.log("initThreeAndCannon called");
+        console.log("mountRef:", mountRef.current);
+        if (!mountRef.current || sceneRef.current) {
+            return;
+        }
+
+        console.log("App.tsx: Initializing Three.js and Cannon.js...");
+
+        // Three.js Scene
+        const scene = new THREE.Scene();
+        sceneRef.current = scene;
+
+        // Camera
+        const camera = new THREE.PerspectiveCamera(
+            24,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+        cameraRef.current = camera;
+        // Camera position will be synced with player body, so set relative to player's head
+        camera.position.set(0, 1.6, 0); // ~1.6 meters eye height
+
+        yaw.current.add(pitch.current);
+        pitch.current.add(camera);
+        scene.add(yaw.current); // Add yaw object to scene, which contains pitch and camera
+
+        // Renderer
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        rendererRef.current = renderer;
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true; // Keep shadow map enabled for future use with other lights if needed
+        renderer.toneMapping = THREE.ACESFilmicToneMapping; // Recommended for HDR
+        renderer.toneMappingExposure = 1.2; // Adjust exposure as needed
+        mountRef.current.appendChild(renderer.domElement);
+
+        // Load HDR environment map
+        new RGBELoader()
+            .setPath('/hdri/') // Assuming your HDR file is in public/hdri/
+            .load('venice_sunset_1k.hdr', (texture) => { // Replace with your HDR file name (e.g., 'venice_sunset_1k.hdr')
+                texture.mapping = THREE.EquirectangularReflectionMapping;
+                scene.environment = texture; // Global environment lighting
+                scene.background = texture; // Set background to HDR as well
+                console.log("App.tsx: HDR environment map loaded and applied.");
+            }, undefined, (error) => {
+                console.error("App.tsx: Error loading HDR environment map:", error);
+            });
+
+        // Cannon.js World
+        const world = new CANNON.World();
+        worldRef.current = world;
+        world.gravity.set(0, -9.82, 0);
+        world.broadphase = new CANNON.SAPBroadphase(world);
+        world.defaultContactMaterial.friction = 0.5;
+        world.defaultContactMaterial.restitution = 0.1;
+
+        // --- Realistic Ground Terrain ---
+        const planeSize = 2000; // Extend the ground far (e.g., 2000m x 2000m)
+        const segments = 256; // More segments for detailed terrain (e.g., 256x256 grid)
+        const amplitude = 50; // Max height of hills/mountains (e.g., 50m)
+        const flatSize = 20; // 20m x 20m flat area in the center
+
+        const heights2D = generateHills(planeSize, planeSize, segments, amplitude, flatSize);
+
+        const groundGeometry = new THREE.BufferGeometry();
+        const positions = [];
+        const uvs = []; // For texture mapping
+
+        const halfPlaneSize = planeSize / 2;
+        const segmentWidth = planeSize / segments;
+        const segmentDepth = planeSize / segments;
+
+        // Create vertices for the grid
+        for (let i = 0; i <= segments; i++) {
+            for (let j = 0; j <= segments; j++) {
+                const x = (j * segmentWidth) - halfPlaneSize;
+                const z = (i * segmentDepth) - halfPlaneSize;
+                const y = heights2D[i][j]; // Get height from generated data
+
+                positions.push(x, y, z);
+                uvs.push(j / segments, i / segments); // Simple UV mapping (adjust tiling in material)
+            }
+        }
+
+        // Create indices for triangles (two triangles per quad)
+        const indices = [];
+        for (let i = 0; i < segments; i++) {
+            for (let j = 0; j < segments; j++) {
+                const a = i * (segments + 1) + j;
+                const b = i * (segments + 1) + j + 1;
+                const c = (i + 1) * (segments + 1) + j;
+                const d = (i + 1) * (segments + 1) + j + 1;
+
+                // First triangle
+                indices.push(a, b, c);
+                // Second triangle
+                indices.push(b, d, c);
+            }
+        }
+
+        groundGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        groundGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+        groundGeometry.setIndex(indices);
+        groundGeometry.computeVertexNormals(); // Crucial for correct lighting and shading
+
+        // Load textures for realistic ground
+        const textureLoader = new THREE.TextureLoader();
+        let groundColorMap: THREE.Texture | null = null;
+        let groundNormalMap: THREE.Texture | null = null;
+
+        try {
+            // IMPORTANT: You need to place your texture files in the public/textures/ground/ directory.
+            // Example: /public/textures/ground/grass_color.jpg
+            // Example: /public/textures/ground/grass_normal.jpg
+            groundColorMap = textureLoader.load('/textures/ground/grass_color.jpg', () => console.log('Ground color texture loaded.'));
+            groundColorMap.wrapS = groundColorMap.wrapT = THREE.RepeatWrapping;
+            groundColorMap.repeat.set(planeSize / 10, planeSize / 10); // Adjust tiling for desired density
+
+            groundNormalMap = textureLoader.load('/textures/ground/grass_normal.jpg', () => console.log('Ground normal texture loaded.'));
+            groundNormalMap.wrapS = groundNormalMap.wrapT = THREE.RepeatWrapping;
+            groundNormalMap.repeat.set(planeSize / 10, planeSize / 10); // Adjust tiling to match color map
+
+        } catch (error) {
+            console.warn("Could not load ground textures. Using fallback color.", error);
+        }
+
+        const groundMaterial = new THREE.MeshStandardMaterial({
+            color: 0x3d8c40, // Fallback color if textures fail to load
+            map: groundColorMap, // Your diffuse/albedo map
+            normalMap: groundNormalMap, // Your normal/bump map for surface detail
+            roughness: 0.8, // Adjust for desired surface roughness
+            metalness: 0.1, // Adjust for desired metallic properties (usually low for terrain)
+        });
+
+        const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
+        groundMesh.receiveShadow = true; // Essential for the ground to act as a shadowcatcher
+        scene.add(groundMesh);
+
+        // Cannon.js Ground Body for the terrain using Heightfield
+        // Flatten the 2D heights array into a 1D array for Cannon.js Heightfield
+        const heights1D = heights2D.flat();
+
+        // Find the minimum height in the generated terrain for correct Cannon.js positioning
+        let minHeight = Infinity;
+        for (let i = 0; i <= segments; i++) {
+            for (let j = 0; j <= segments; j++) {
+                if (heights2D[i][j] < minHeight) {
+                    minHeight = heights2D[i][j];
+                }
+            }
+        }
+
+        const groundShape = new CANNON.Heightfield(heights1D, { // Pass the flattened array here
+            elementSize: segmentWidth, // Size of each element in the heightfield grid
+            // The 'columns' property is not part of the IHightfield type definition in some Cannon.js versions.
+            // Cannon.js often infers the grid's columns from the data.length and elementSize for square grids.
+            // If you encounter physics issues with non-square heightfields, you might need to adjust your Cannon.js version
+            // or find a way to explicitly set the columns based on your Cannon.js type definitions.
+        });
+        const groundBody = new CANNON.Body({ mass: 0, shape: groundShape });
+
+        // Position the Cannon.js heightfield correctly to align with Three.js mesh.
+        // Cannon.js heightfield's origin is at its bottom-left corner (min X, min Z) of the heightmap data.
+        // Three.js plane's origin is at its center.
+        groundBody.position.set(-halfPlaneSize, minHeight, -halfPlaneSize);
+        world.addBody(groundBody);
+
+        // Player Body
+        playerBodyRef.current = new CANNON.Body({ // Assign to the ref
+            mass: 5,
+            shape: new CANNON.Sphere(1.0), // Capsule shape is better for character, but sphere is simpler for now
+            position: new CANNON.Vec3(0, 5, 10), // Initial spawn position, adjusted to be above the flat ground
+        });
+        playerBodyRef.current.linearDamping = 0.9;
+        world.addBody(playerBodyRef.current);
+
+        console.log("App.tsx: Three.js and Cannon.js initialized.");
+
+    }, []);
+
+    // Animation loop
+    const animate = useCallback(() => {
+        animationFrameId.current = requestAnimationFrame(animate);
+
+        const scene = sceneRef.current;
+        const camera = cameraRef.current;
+        const renderer = rendererRef.current;
+        const world = worldRef.current;
+        const playerBody = playerBodyRef.current;
+
+        if (!scene || !camera || !renderer || !world || !playerBody) {
+            return;
+        }
+
+        // Update physics
+        const fixedTimeStep = 1 / 60;
+        const maxSubSteps = 10;
+        world.step(fixedTimeStep, performance.now() / 1000, maxSubSteps);
+
+        // Sync player body with camera
+        yaw.current.position.set(
+            playerBody.position.x,
+            playerBody.position.y - 1, // Subtract radius to get "feet" position
+            playerBody.position.z
+        );
+
+        // Apply movement with realistic walking speed (1.4 m/s)
+        const moveSpeed = 0.8; // Realistic walking speed in m/s
+        const velocity = new CANNON.Vec3(0, playerBody.velocity.y, 0);
+
+        // Calculate movement direction based on camera orientation
+        const forwardVector = new THREE.Vector3(0, 0, -1);
+        forwardVector.applyQuaternion(yaw.current.quaternion);
+        forwardVector.y = 0;
+        forwardVector.normalize();
+
+        const rightVector = new THREE.Vector3(1, 0, 0);
+        rightVector.applyQuaternion(yaw.current.quaternion);
+        rightVector.y = 0;
+        rightVector.normalize();
+
+        // Calculate movement vector based on input
+        if (moveForward.current) {
+            velocity.x += forwardVector.x * moveSpeed;
+            velocity.z += forwardVector.z * moveSpeed;
+        }
+        if (moveBackward.current) {
+            velocity.x -= forwardVector.x * moveSpeed;
+            velocity.z -= forwardVector.z * moveSpeed;
+        }
+        if (moveLeft.current) {
+            velocity.x -= rightVector.x * moveSpeed;
+            velocity.z -= rightVector.z * moveSpeed;
+        }
+        if (moveRight.current) {
+            velocity.x += rightVector.x * moveSpeed;
+            velocity.z += rightVector.z * moveSpeed;
+        }
+
+        // Apply velocity to player body
+        playerBody.velocity.x = velocity.x;
+        playerBody.velocity.z = velocity.z;
+
+        // Apply look delta
+        if (lookDelta.current.x !== 0 || lookDelta.current.y !== 0) {
+            yaw.current.rotation.y -= lookDelta.current.x * 0.005;
+            pitch.current.rotation.x -= lookDelta.current.y * 0.005;
+            pitch.current.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch.current.rotation.x));
+            lookDelta.current.x = lookDelta.current.y = 0;
+        }
+
+        // Render the scene
+        renderer.render(scene, camera);
+    }, []);
+
+
+    // Effect for initializing Three.js and Cannon.js
+    useEffect(() => {
+        initThreeAndCannon();
+        const currentMountRef = mountRef.current; // Capture current ref value for cleanup
+        animationFrameId.current = requestAnimationFrame(animate); // Start animation loop
+
+        // Cleanup function
+        return () => {
+            console.log("App.tsx: Three.js resources disposed.");
+            if (animationFrameId.current) {
+                cancelAnimationFrame(animationFrameId.current);
+            }
+            if (rendererRef.current) {
+                rendererRef.current.dispose();
+                // Use the captured ref value in cleanup
+                if (currentMountRef && rendererRef.current.domElement) {
+                    currentMountRef.removeChild(rendererRef.current.domElement);
+                }
+            }
+            // Nullify refs for proper cleanup
+            sceneRef.current = null;
+            cameraRef.current = null;
+            rendererRef.current = null;
+            worldRef.current = null;
+            playerBodyRef.current = null;
+            gltfModelRef.current = null;
+            modelBodiesRef.current = [];
+        };
+    }, [initThreeAndCannon, animate]);
+
+    // Load model list from public/models/houses/index.json
+    useEffect(() => {
+        const fetchModelList = async () => {
+            try {
+                const response = await fetch("/models/houses/index.json");
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data: string[] = await response.json();
+                setModelList(data);
+                console.log("App.tsx: Model list loaded successfully:", data);
+                if (data.length > 0) {
+                    setSelectedModelIndex(0);
+                    console.log("App.tsx: Initial model set to index 0.");
+                } else {
+                    console.log("App.tsx: No models available yet, skipping initial model load.");
+                }
+            } catch (error) {
+                console.error("App.tsx: Failed to fetch model list:", error);
+            }
+        };
+        fetchModelList();
+    }, []);
+
     // Effect to trigger model load when selectedModelIndex or modelList changes
     useEffect(() => {
         if (modelList.length > 0 && selectedModelIndex >= 0 && selectedModelIndex < modelList.length) {
             console.log("App.tsx: Models list updated or selected model changed. Calling loadModel for index:", selectedModelIndex);
-            loadModel(modelList[selectedModelIndex], selectedModelIndex);
+            if (sceneRef.current && worldRef.current) {
+                loadModel(modelList[selectedModelIndex], selectedModelIndex, sceneRef.current, worldRef.current);
+            }
         }
     }, [selectedModelIndex, modelList, loadModel]);
 
@@ -537,8 +533,6 @@ export default function App() {
                 camera.aspect = window.innerWidth / window.innerHeight;
                 camera.updateProjectionMatrix();
                 renderer.setSize(window.innerWidth, window.innerHeight);
-                renderer.setClearColor(0x444444); // dark gray background
-
                 console.log("App.tsx: Window resized. Renderer updated.");
             }
         };

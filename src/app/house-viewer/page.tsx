@@ -5,7 +5,6 @@ import App from '../../components/App'; // Adjust the path if your App.js is in 
 import { Box } from '@chakra-ui/react'; // Import Box from Chakra UI
 import { usePageTransition } from '@/components/PageTransitionProvider'; // Import the page transition hook
 import { usePathname } from 'next/navigation'; // To get the current path
-import HouseViewer from '../../components/HouseViewer';
 
 const HouseViewerPage = () => {
   const { signalPageLoaded } = usePageTransition();
@@ -28,7 +27,7 @@ const HouseViewerPage = () => {
       overflow="hidden" // Hide overflow to prevent scrollbars
       position="relative" // Needed for absolute positioning of children if any
     >
-      <HouseViewer />
+      <App />
     </Box>
   );
 };
