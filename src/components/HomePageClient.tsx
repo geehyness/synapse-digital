@@ -22,16 +22,16 @@ const DEFAULT_CONFIG = {
   baseSpeed: 0.000008, // Slightly reduced for slower overall movement
   momentumDecay: 0.8,
   scrollSensitivity: 0.001, // Default scroll sensitivity
-  glowIntensity: 0.5,
+  glowIntensity: 0,
   connectionChance: 0.3,
   maxConnectionDistance: 100,
   rotationSpeed: 0.001,
-  trailOpacity: 0.5,
+  trailOpacity: 1,
   blackHole: {
     isEnabled: true,
     mass: 100,
     gravity: 0.18,
-    attractionRadius: 520,
+    attractionRadius: 800,
     spin: 1,
     accretionDisk: true,
     escapeMomentumThreshold: 20, // This threshold is now less about "escape" and more about internal logic for "sucking up"
@@ -1011,19 +1011,19 @@ const HomePageClient = () => {
           p={6}
         >
           <VStack>
-            <Text fontSize="5xl" fontWeight="bold" color="orange.400">Future-Focused</Text>
+            <Text fontSize="2xl" fontWeight="bold" color="orange.400">Future-Focused</Text>
             <Text color="gray.300">Innovative Solutions</Text>
           </VStack>
           <VStack>
-            <Text fontSize="5xl" fontWeight="bold" color="orange.400">Client-Centric</Text>
+            <Text fontSize="2xl" fontWeight="bold" color="orange.400">Client-Centric</Text>
             <Text color="gray.300">Dedicated Partnerships</Text>
           </VStack>
           <VStack>
-            <Text fontSize="5xl" fontWeight="bold" color="orange.400">Local Impact</Text>
+            <Text fontSize="2xl" fontWeight="bold" color="orange.400">Local Impact</Text>
             <Text color="gray.300">Southern Africa Focused</Text>
           </VStack>
           <VStack>
-            <Text fontSize="5xl" fontWeight="bold" color="orange.400">Growing Team</Text>
+            <Text fontSize="2xl" fontWeight="bold" color="orange.400">Growing Team</Text>
             <Text color="gray.300">Passionate Experts</Text>
           </VStack>
         </SimpleGrid>
