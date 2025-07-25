@@ -261,9 +261,9 @@ export default function App() {
         world.defaultContactMaterial.restitution = 0.1;
 
         // --- Realistic Ground Terrain ---
-        const planeSize = 2000; // Extend the ground far (e.g., 2000m x 2000m)
-        const segments = 256; // More segments for detailed terrain (e.g., 256x256 grid)
-        const amplitude = 50; // Max height of hills/mountains (e.g., 50m)
+        const planeSize = 30; // Extend the ground far (e.g., 2000m x 2000m)
+        const segments = 128; // Reduced segments for performance (e.g., 128x128 grid)
+        const amplitude = 0; // Max height of hills/mountains (e.g., 50m)
         const flatSize = 20; // 20m x 20m flat area in the center
 
         const heights2D = generateHills(planeSize, planeSize, segments, amplitude, flatSize);
