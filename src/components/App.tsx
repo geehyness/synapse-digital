@@ -71,7 +71,7 @@ export default function App() {
     const isControlsVisible = useBreakpointValue({ base: true, md: false });
 
     // NEW: State for controlling collision object visibility
-    const [showColliders, setShowColliders] = useState(true); // Set to true by default to see them initially
+    const [showColliders, setShowColliders] = useState(false); // Set to true by default to see them initially
 
     // Animation frame ID for cleanup
     const animationFrameId = useRef<number | null>(null);

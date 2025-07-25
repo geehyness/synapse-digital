@@ -4,7 +4,7 @@
 import { Inter } from 'next/font/google'
 import './globals.css' // Keep for global non-Chakra CSS (like glitch effect)
 import { Providers } from './providers' // Import the new provider
-//import { Navbar } from '@/components/Navbar' // Import your Navbar component
+import { Navbar } from '@/components/Navbar' // Import your Navbar component
 import { Footer } from '@/components/Footer'; // Import the Footer component
 import { usePathname } from 'next/navigation' // Import usePathname
 import { Box } from '@chakra-ui/react'; // Only Box is needed here for layout structure
@@ -79,19 +79,18 @@ export default function RootLayout({
       <head><meta name="viewport" content="width=device-width, initial-scale=1" />{/* PWA Manifest Link */}<link rel="manifest" href="/manifest.json" />{/* Apple Touch Icon (optional, for iOS home screen icon) */}<link rel="apple-touch-icon" href="/icons/icon-192x192.png" />{/* Theme color for address bar on mobile browsers */}<meta name="theme-color" content="#FF4F00" /></head>
       <body>
         <Providers>
-          {/*          <Navbar
+          <Navbar
             type={navbarType}
             appName={siteSettings?.title || "Synapse Digital"} // Use fetched title or default
             siteLogoUrl={siteLogoUrl} // Pass the fetched logo URL to Navbar
           />
 
           {/* Add top padding to main content to account for fixed navbar height */}
-          <Box //pt="64px"
+          <Box pt="64px" // Added padding top to account for fixed navbar height
             flex="1" className={inter.className}>
             {children}
           </Box>
 
-          {/* Global Footer Component *
           <Footer appName={siteSettings?.title || "Synapse Digital"} /> {/* Use fetched title or default */}
         </Providers>
       </body>
