@@ -21,54 +21,13 @@ function useIsPortrait() {
     return isPortrait;
 }
 
-// Function to generate realistic hills with a flat center
-function generateHills(width: number, depth: number, segments: number, amplitude: number, flatSize: number): number[][] {
+// Function to generate flat plane heights (simplified from generateHills)
+function generateFlatPlaneHeights(width: number, depth: number, segments: number): number[][] {
     const heights: number[][] = [];
-    const halfWidth = width / 2;
-    const halfDepth = depth / 2;
-    const segmentWidth = width / segments;
-    const segmentDepth = depth / segments;
-
-    const flatHalfSize = flatSize / 2; // Half size of the flat area (e.g., 10 for a 20x20 flat area)
-    const transitionZone = 20; // Meters over which to smoothly transition from flat to hills
-
     for (let i = 0; i <= segments; i++) {
         heights[i] = [];
         for (let j = 0; j <= segments; j++) {
-            const x = (j * segmentWidth) - halfWidth; // World X coordinate
-            const z = (i * segmentDepth) - halfDepth; // World Z coordinate
-
-            let y = 0; // Default height for the flat area
-
-            // Calculate base terrain height using multiple noise frequencies
-            // This will produce values roughly between -amplitude and +amplitude
-            let noiseHeight = amplitude * (
-                Math.sin(x / 40) * Math.cos(z / 40) +
-                0.5 * Math.sin(x / 20) * Math.cos(z / 20) +
-                0.25 * Math.sin(x / 10) * Math.cos(z / 10)
-            );
-
-            // Add some random variation, centered around 0
-            noiseHeight += 0.1 * amplitude * (Math.random() - 0.5);
-
-            // Ensure noiseHeight is non-negative if we want hills to go up from flat.
-            // If you want valleys below the flat plane, remove this line.
-            noiseHeight = Math.max(0, noiseHeight); // Only positive heights for hills
-
-            // Calculate distance to the edge of the flat square
-            const dx = Math.max(0, Math.abs(x) - flatHalfSize);
-            const dz = Math.max(0, Math.abs(z) - flatHalfSize);
-            const distanceToFlatEdge = Math.sqrt(dx * dx + dz * dz);
-
-            // Apply smooth transition from flat (y=0) to hilly terrain
-            if (distanceToFlatEdge < transitionZone) {
-                const t = distanceToFlatEdge / transitionZone; // Normalized transition factor (0 at flat edge, 1 at transitionZone away)
-                const smoothT = t * t * (3 - 2 * t); // Smoothstep function for a smoother blend
-                y = noiseHeight * smoothT;
-            } else {
-                y = noiseHeight;
-            }
-            heights[i][j] = y;
+            heights[i][j] = 0; // Always flat at height 0
         }
     }
     return heights;
@@ -260,13 +219,11 @@ export default function App() {
         world.defaultContactMaterial.friction = 0.5;
         world.defaultContactMaterial.restitution = 0.1;
 
-        // --- Realistic Ground Terrain ---
-        const planeSize = 30; // Extend the ground far (e.g., 2000m x 2000m)
-        const segments = 128; // Reduced segments for performance (e.g., 128x128 grid)
-        const amplitude = 0; // Max height of hills/mountains (e.g., 50m)
-        const flatSize = 20; // 20m x 20m flat area in the center
+        // --- Realistic Ground Terrain (Simplified to a flat plane) ---
+        const planeSize = 30; // 30m x 30m square ground
+        const segments = 2; // Minimal segments for a flat square
 
-        const heights2D = generateHills(planeSize, planeSize, segments, amplitude, flatSize);
+        const heights2D = generateFlatPlaneHeights(planeSize, planeSize, segments); // Call the new function
 
         const groundGeometry = new THREE.BufferGeometry();
         const positions = [];
@@ -342,33 +299,10 @@ export default function App() {
         groundMesh.receiveShadow = true; // Essential for the ground to act as a shadowcatcher
         scene.add(groundMesh);
 
-        // Cannon.js Ground Body for the terrain using Heightfield
-        // Flatten the 2D heights array into a 1D array for Cannon.js Heightfield
-        const heights1D = heights2D.flat();
-
-        // Find the minimum height in the generated terrain for correct Cannon.js positioning
-        let minHeight = Infinity;
-        for (let i = 0; i <= segments; i++) {
-            for (let j = 0; j <= segments; j++) {
-                if (heights2D[i][j] < minHeight) {
-                    minHeight = heights2D[i][j];
-                }
-            }
-        }
-
-        const groundShape = new CANNON.Heightfield(heights1D, { // Pass the flattened array here
-            elementSize: segmentWidth, // Size of each element in the heightfield grid
-            // The 'columns' property is not part of the IHightfield type definition in some Cannon.js versions.
-            // Cannon.js often infers the grid's columns from the data.length and elementSize for square grids.
-            // If you encounter physics issues with non-square heightfields, you might need to adjust your Cannon.js version
-            // or find a way to explicitly set the columns based on your Cannon.js type definitions.
-        });
+        // Cannon.js Ground Body (Simplified to a Box)
+        const groundShape = new CANNON.Box(new CANNON.Vec3(planeSize / 2, 0.05, planeSize / 2)); // Half extents: width/2, thickness/2, depth/2
         const groundBody = new CANNON.Body({ mass: 0, shape: groundShape });
-
-        // Position the Cannon.js heightfield correctly to align with Three.js mesh.
-        // Cannon.js heightfield's origin is at its bottom-left corner (min X, min Z) of the heightmap data.
-        // Three.js plane's origin is at its center.
-        groundBody.position.set(-halfPlaneSize, minHeight, -halfPlaneSize);
+        groundBody.position.set(0, -0.05, 0); // Position so its top surface is at y=0
         world.addBody(groundBody);
 
         // Player Body
