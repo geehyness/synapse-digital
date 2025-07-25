@@ -79,14 +79,15 @@ export default function RootLayout({
       <head><meta name="viewport" content="width=device-width, initial-scale=1" />{/* PWA Manifest Link */}<link rel="manifest" href="/manifest.json" />{/* Apple Touch Icon (optional, for iOS home screen icon) */}<link rel="apple-touch-icon" href="/icons/icon-192x192.png" />{/* Theme color for address bar on mobile browsers */}<meta name="theme-color" content="#FF4F00" /></head>
       <body>
         <Providers>
-{/*          <Navbar
+          {/*          <Navbar
             type={navbarType}
             appName={siteSettings?.title || "Synapse Digital"} // Use fetched title or default
             siteLogoUrl={siteLogoUrl} // Pass the fetched logo URL to Navbar
           />
 
           {/* Add top padding to main content to account for fixed navbar height */}
-          <Box pt="64px" flex="1" className={inter.className}>
+          <Box //pt="64px"
+            flex="1" className={inter.className}>
             {children}
           </Box>
 

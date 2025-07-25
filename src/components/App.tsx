@@ -42,12 +42,20 @@ export default function App() {
     const worldRef = useRef<CANNON.World | null>(null);
     const playerBodyRef = useRef<CANNON.Body | null>(null);
     const gltfModelRef = useRef<THREE.Object3D | null>(null);
-    const modelBodiesRef = useRef<CANNON.Body[]>([]);
+
+    // NEW: Refs for collision visualization
+    const playerVisualMeshRef = useRef<THREE.Mesh | null>(null);
+    const dynamicCollisionObjectsRef = useRef<{ body: CANNON.Body, mesh: THREE.Mesh }[]>([]); // For house model colliders
+    const staticCollisionObjectsRef = useRef<{ body: CANNON.Body, mesh: THREE.Mesh }[]>([]); // For walls, ground, gate posts
+
+    const groundMeshRef = useRef<THREE.Mesh | null>(null);
+    const groundBodyRef = useRef<CANNON.Body | null>(null);
 
     // Refs for camera controls
     const yaw = useRef(new THREE.Object3D());
     const pitch = useRef(new THREE.Object3D());
-    const lookDelta = useRef({ x: 0, y: 0 });
+    const lookDelta = useRef<{ x: number; y: number; prevClientX?: number; prevClientY?: number }>({ x: 0, y: 0 });
+
 
     // Refs for movement state
     const moveForward = useRef(false);
@@ -61,6 +69,9 @@ export default function App() {
     const [isPointerLocked, setIsPointerLocked] = useState(false);
     const isPortrait = useIsPortrait();
     const isControlsVisible = useBreakpointValue({ base: true, md: false });
+
+    // NEW: State for controlling collision object visibility
+    const [showColliders, setShowColliders] = useState(true); // Set to true by default to see them initially
 
     // Animation frame ID for cleanup
     const animationFrameId = useRef<number | null>(null);
@@ -91,11 +102,16 @@ export default function App() {
             console.log("loadModel: Removed previous Three.js model from scene and disposed resources.");
         }
 
-        // Clear previous Cannon.js bodies associated with the model
-        if (modelBodiesRef.current.length > 0) {
-            modelBodiesRef.current.forEach(body => world.remove(body));
-            modelBodiesRef.current = [];
-            console.log("loadModel: Removed previous Cannon.js model bodies.");
+        // NEW: Clear previous dynamic collision bodies and their visual meshes
+        if (dynamicCollisionObjectsRef.current.length > 0) {
+            dynamicCollisionObjectsRef.current.forEach(({ body, mesh }) => {
+                world.remove(body);
+                scene.remove(mesh);
+                mesh.geometry.dispose();
+                (mesh.material as THREE.Material).dispose();
+            });
+            dynamicCollisionObjectsRef.current = [];
+            console.log("loadModel: Cleared previous dynamic collision visual meshes and bodies.");
         }
 
         const loader = new GLTFLoader();
@@ -116,49 +132,84 @@ export default function App() {
             gltfModelRef.current = model;
             console.log("loadModel: GLTF model loaded and added to scene:", model);
 
+            // NEW: Define collision material
+            const collisionMaterial = new THREE.MeshBasicMaterial({
+                color: 0xff0000, // Red
+                transparent: true,
+                opacity: 0.5,
+                depthWrite: false // Helps with rendering overlapping transparent objects
+            });
+
             // Create Cannon.js bodies from meshes in the loaded GLTF model
             let bodiesCreatedCount = 0;
             model.traverse((child) => {
                 if (child instanceof THREE.Mesh) {
-                    // Calculate bounding box for the mesh to create a Cannon.js Box shape
-                    child.geometry.computeBoundingBox();
-                    const size = new THREE.Vector3();
-                    child.geometry.boundingBox?.getSize(size);
+                    // For demonstration, skipping interior/furniture/windows/doors. Adjust as per your model's naming.
+                    if (child.name.includes("Interior") || child.name.includes("Furniture") || child.name.includes("Window") || child.name.includes("Door")) {
+                        console.log(`Skipping collision body for interior/furniture/window/door mesh: ${child.name}`);
+                        return; // Skip creating a body for this mesh
+                    }
 
-                    const shape = new CANNON.Box(new CANNON.Vec3(size.x / 2, size.y / 2, size.z / 2));
+                    // Ensure geometry is a BufferGeometry and has position attribute
+                    if (!child.geometry || !(child.geometry instanceof THREE.BufferGeometry) || !child.geometry.attributes.position) {
+                        console.warn(`Mesh ${child.name} has no valid BufferGeometry or position attribute. Skipping collision body.`);
+                        return;
+                    }
+
+                    const geometry = child.geometry;
+                    const vertices = geometry.attributes.position.array as Float32Array;
+                    let indices: number[] = [];
+
+                    if (geometry.index) {
+                        indices = Array.from(geometry.index.array);
+                    } else {
+                        // If no index, create a simple one (assuming triangles)
+                        for (let i = 0; i < vertices.length / 3; i++) {
+                            indices.push(i);
+                        }
+                    }
+
+                    // Create Cannon.js Trimesh shape
+                    const shape = new CANNON.Trimesh(Array.from(vertices), indices);
+
+                    // Calculate the world position and quaternion of the mesh
+                    const worldPosition = new THREE.Vector3();
+                    child.getWorldPosition(worldPosition);
+
+                    const worldQuaternion = new THREE.Quaternion();
+                    child.getWorldQuaternion(worldQuaternion);
 
                     const body = new CANNON.Body({
-                        mass: 0, // Static environmental objects
+                        mass: 0, // Static object
                         shape: shape,
-                        position: new CANNON.Vec3(
-                            child.position.x,
-                            child.position.y,
-                            child.position.z
-                        )
+                        position: new CANNON.Vec3(worldPosition.x, worldPosition.y, worldPosition.z)
                     });
-
-                    // Set position based on world coordinates
-                    const worldPos = new THREE.Vector3();
-                    child.getWorldPosition(worldPos);
-                    body.position.set(worldPos.x, worldPos.y, worldPos.z);
-
-                    // Apply rotation
-                    const worldQuat = new THREE.Quaternion();
-                    child.getWorldQuaternion(worldQuat);
-                    body.quaternion.set(worldQuat.x, worldQuat.y, worldQuat.z, worldQuat.w);
+                    body.quaternion.set(worldQuaternion.x, worldQuaternion.y, worldQuaternion.z, worldQuaternion.w);
 
                     world.addBody(body);
-                    modelBodiesRef.current.push(body);
+
+                    // NEW: Create visual mesh for this collider by cloning the original mesh's geometry
+                    // This ensures the visual collider matches the actual mesh shape
+                    const visualGeometry = child.geometry.clone();
+                    const visualMesh = new THREE.Mesh(visualGeometry, collisionMaterial);
+                    visualMesh.position.copy(worldPosition); // Position based on the Cannon.js body's world position
+                    visualMesh.quaternion.copy(worldQuaternion); // Orientation based on the Cannon.js body's world quaternion
+                    visualMesh.castShadow = false;
+                    visualMesh.receiveShadow = false;
+                    visualMesh.visible = showColliders; // Set initial visibility based on state
+                    scene.add(visualMesh);
+                    dynamicCollisionObjectsRef.current.push({ body: body, mesh: visualMesh });
+
                     bodiesCreatedCount++;
-                    console.log(`loadModel: Added Cannon.js body for mesh: "${child.name}" at world position [${body.position.x.toFixed(2)}, ${body.position.y.toFixed(2)}, ${body.position.z.toFixed(2)}]`);
+                    console.log(`loadModel: Added Cannon.js Trimesh body and visual for mesh: "${child.name}" at world position [${body.position.x.toFixed(2)}, ${body.position.y.toFixed(2)}, ${body.position.z.toFixed(2)}]`);
                 }
             });
-            console.log(`loadModel: Finished processing GLTF for collisions. Total Cannon.js bodies created: ${bodiesCreatedCount}`);
+            console.log(`loadModel: Finished processing GLTF for collisions. Total Cannon.js bodies and visuals created: ${bodiesCreatedCount}`);
 
         } catch (error) {
             console.error("loadModel: Error loading GLTF model:", error);
         }
-    }, []);
+    }, [showColliders]); // Add showColliders to dependencies
 
     // Initial setup for Three.js and Cannon.js
     const initThreeAndCannon = useCallback(() => {
@@ -170,13 +221,15 @@ export default function App() {
 
         console.log("App.tsx: Initializing Three.js and Cannon.js...");
 
+        const textureLoader = new THREE.TextureLoader();
+
         // Three.js Scene
         const scene = new THREE.Scene();
         sceneRef.current = scene;
 
         // Camera
         const camera = new THREE.PerspectiveCamera(
-            24,
+            75,
             window.innerWidth / window.innerHeight,
             0.1,
             1000
@@ -216,107 +269,317 @@ export default function App() {
         worldRef.current = world;
         world.gravity.set(0, -9.82, 0);
         world.broadphase = new CANNON.SAPBroadphase(world);
-        world.defaultContactMaterial.friction = 0.5;
+        world.defaultContactMaterial.friction = 0.5; // Keep default friction as is for other objects
         world.defaultContactMaterial.restitution = 0.1;
 
-        // --- Realistic Ground Terrain (Simplified to a flat plane) ---
-        const planeSize = 100; // 30m x 30m square ground
-        const segments = 2; // Minimal segments for a flat square
+        // Define custom materials for player, ground, and walls
+        const playerMaterial = new CANNON.Material("playerMaterial");
+        const groundMaterial = new CANNON.Material("groundMaterial");
+        const wallMaterial = new CANNON.Material("wallMaterial");
+        // Material for the path
+        const pathMaterial = new CANNON.Material("pathMaterial");
+        // Material for the gate posts
+        const gatePostMaterial = new CANNON.Material("gatePostMaterial");
 
-        const heights2D = generateFlatPlaneHeights(planeSize, planeSize, segments); // Call the new function
 
-        const groundGeometry = new THREE.BufferGeometry();
-        const positions = [];
-        const uvs = []; // For texture mapping
-
-        const halfPlaneSize = planeSize / 2;
-        const segmentWidth = planeSize / segments;
-        const segmentDepth = planeSize / segments;
-
-        // Create vertices for the grid
-        for (let i = 0; i <= segments; i++) {
-            for (let j = 0; j <= segments; j++) {
-                const x = (j * segmentWidth) - halfPlaneSize;
-                const z = (i * segmentDepth) - halfPlaneSize;
-                const y = heights2D[i][j]; // Get height from generated data
-
-                positions.push(x, y, z);
-                uvs.push(j / segments, i / segments); // Simple UV mapping (adjust tiling in material)
+        // Define ContactMaterials for specific interactions
+        // Player vs. Ground
+        const playerGroundContactMaterial = new CANNON.ContactMaterial(
+            playerMaterial,
+            groundMaterial,
+            {
+                friction: 0.1, // Low friction for smooth movement on ground
+                restitution: 0.0, // No bounce
             }
-        }
+        );
+        world.addContactMaterial(playerGroundContactMaterial);
 
-        // Create indices for triangles (two triangles per quad)
-        const indices = [];
-        for (let i = 0; i < segments; i++) {
-            for (let j = 0; j < segments; j++) {
-                const a = i * (segments + 1) + j;
-                const b = i * (segments + 1) + j + 1;
-                const c = (i + 1) * (segments + 1) + j;
-                const d = (i + 1) * (segments + 1) + j + 1;
-
-                // First triangle
-                indices.push(a, b, c);
-                // Second triangle
-                indices.push(b, d, c);
+        // Player vs. Wall
+        const playerWallContactMaterial = new CANNON.ContactMaterial(
+            playerMaterial,
+            wallMaterial,
+            {
+                friction: 0.2, // Moderate friction for walls (can adjust for "stickiness")
+                restitution: 0.0, // No bounce
             }
-        }
+        );
+        world.addContactMaterial(playerWallContactMaterial);
 
-        groundGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        groundGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-        groundGeometry.setIndex(indices);
-        groundGeometry.computeVertexNormals(); // Crucial for correct lighting and shading
+        // Player vs. Path
+        const playerPathContactMaterial = new CANNON.ContactMaterial(
+            playerMaterial,
+            pathMaterial,
+            {
+                friction: 0.6, // Higher friction for path to simulate different terrain
+                restitution: 0.0,
+            }
+        );
+        world.addContactMaterial(playerPathContactMaterial);
 
-        // Load textures for realistic ground
-        const textureLoader = new THREE.TextureLoader();
-        let groundColorMap: THREE.Texture | null = null;
-        let groundNormalMap: THREE.Texture | null = null;
+        // Player vs. Gate Post
+        const playerGatePostContactMaterial = new CANNON.ContactMaterial(
+            playerMaterial,
+            gatePostMaterial,
+            {
+                friction: 0.2, // Moderate friction
+                restitution: 0.0, // No bounce
+            }
+        );
+        world.addContactMaterial(playerGatePostContactMaterial);
 
-        try {
-            // IMPORTANT: You need to place your texture files in the public/textures/ground/ directory.
-            // Example: /public/textures/ground/grass_color.jpg
-            // Example: /public/textures/ground/grass_normal.jpg
-            groundColorMap = textureLoader.load('/textures/ground/grass_color.jpg', () => console.log('Ground color texture loaded.'));
-            groundColorMap.wrapS = groundColorMap.wrapT = THREE.RepeatWrapping;
-            groundColorMap.repeat.set(planeSize / 10, planeSize / 10); // Adjust tiling for desired density
+        // Ground Plane (Physics)
+        const groundShape = new CANNON.Plane();
+        const groundBody = new CANNON.Body({ mass: 0, material: groundMaterial });
+        groundBody.addShape(groundShape);
+        groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2); // Rotate to be flat
+        world.addBody(groundBody);
+        groundBodyRef.current = groundBody; // Store ref for cleanup
 
-            groundNormalMap = textureLoader.load('/textures/ground/grass_normal.jpg', () => console.log('Ground normal texture loaded.'));
-            groundNormalMap.wrapS = groundNormalMap.wrapT = THREE.RepeatWrapping;
-            groundNormalMap.repeat.set(planeSize / 10, planeSize / 10); // Adjust tiling to match color map
+        // Ground Plane (Visual)
+        const groundGeometry = new THREE.PlaneGeometry(50, 50, 1, 1); // 50x50m plane
 
-        } catch (error) {
-            console.warn("Could not load ground textures. Using fallback color.", error);
-        }
+        const grassTexture = textureLoader.load('/textures/grass_color.jpg');
+        grassTexture.wrapS = THREE.RepeatWrapping;
+        grassTexture.wrapT = THREE.RepeatWrapping;
+        grassTexture.repeat.set(20, 20); // Adjust repeat values as needed for good tiling
 
-        const groundMaterial = new THREE.MeshStandardMaterial({
-            color: 0x3d8c40, // Fallback color if textures fail to load
-            map: groundColorMap, // Your diffuse/albedo map
-            normalMap: groundNormalMap, // Your normal/bump map for surface detail
-            roughness: 0.8, // Adjust for desired surface roughness
-            metalness: 0.1, // Adjust for desired metallic properties (usually low for terrain)
+        const groundVisualMaterial = new THREE.MeshStandardMaterial({
+            map: grassTexture
+        });
+        const groundMesh = new THREE.Mesh(groundGeometry, groundVisualMaterial);
+        groundMesh.rotation.x = -Math.PI / 2; // Rotate to be flat
+        groundMesh.receiveShadow = true;
+        scene.add(groundMesh);
+        groundMeshRef.current = groundMesh; // Store ref for cleanup
+
+
+        // NEW: Collision Visualization Material
+        const collisionMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff0000, // Red
+            transparent: true,
+            opacity: 0.5,
+            depthWrite: false // Helps with rendering overlapping transparent objects
         });
 
-        const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
-        groundMesh.receiveShadow = true; // Essential for the ground to act as a shadowcatcher
-        scene.add(groundMesh);
+        // Add Walls
+        const WALL_HEIGHT = 3;
+        const MAP_SIZE = 50;
+        const WALL_THICKNESS = 0.5; // Thickness of the wall itself
+        const GATE_WIDTH = 5; // Width of the gate opening (still defined for path/posts reference)
+        const GATE_POST_THICKNESS = 1.0; // Made thicker
+        const GATE_POST_HEIGHT = WALL_HEIGHT;
 
-        // Cannon.js Ground Body (Simplified to a Box)
-        const groundShape = new CANNON.Box(new CANNON.Vec3(planeSize / 2, 0.05, planeSize / 2)); // Half extents: width/2, thickness/2, depth/2
-        const groundBody = new CANNON.Body({ mass: 0, shape: groundShape });
-        groundBody.position.set(0, -0.05, 0); // Position so its top surface is at y=0
-        world.addBody(groundBody);
+        // Calculate 5% thicker for the new object
+        const GATE_FILL_THICKNESS = WALL_THICKNESS * 1.05;
+
+
+        // Load brick texture for walls
+        const brickTexture = textureLoader.load('/textures/brick_color.jpg',
+            (tex) => { console.log("Brick texture loaded successfully."); },
+            undefined,
+            (err) => { console.error("Error loading brick texture:", err); }
+        );
+        brickTexture.wrapS = THREE.RepeatWrapping;
+        brickTexture.wrapT = THREE.RepeatWrapping;
+        brickTexture.repeat.set(10, 1);
+
+        // Dedicated material for standard brick walls
+        const brickWallMaterial = new THREE.MeshStandardMaterial({
+            map: brickTexture
+        });
+
+        // Material for the brown gate wall (the "closed part")
+        const brownGateMaterial = new THREE.MeshStandardMaterial({
+            color: 0x8B4513 // Saddle brown color
+        });
+
+        // Wall 1: Z+ side (continuous wall, now with brick texture again)
+        const wall1Body = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(MAP_SIZE / 2, WALL_HEIGHT / 2, WALL_THICKNESS / 2)), position: new CANNON.Vec3(0, WALL_HEIGHT / 2, MAP_SIZE / 2), material: wallMaterial });
+        world.addBody(wall1Body);
+        const wall1Geometry = new THREE.BoxGeometry(MAP_SIZE, WALL_HEIGHT, WALL_THICKNESS); // Full width
+        const wall1Mesh = new THREE.Mesh(wall1Geometry, brickWallMaterial); // Apply brickWallMaterial
+        wall1Mesh.position.copy(wall1Body.position as any);
+        wall1Mesh.castShadow = true;
+        scene.add(wall1Mesh);
+        // NEW: Collision visual for Wall 1
+        const wall1VisualMesh = new THREE.Mesh(wall1Geometry, collisionMaterial);
+        wall1VisualMesh.position.copy(wall1Body.position as any);
+        wall1VisualMesh.quaternion.copy(wall1Body.quaternion as any);
+        wall1VisualMesh.castShadow = false;
+        wall1VisualMesh.receiveShadow = false;
+        wall1VisualMesh.visible = showColliders; // Set initial visibility
+        scene.add(wall1VisualMesh);
+        staticCollisionObjectsRef.current.push({ body: wall1Body, mesh: wall1VisualMesh });
+
+
+        // Wall 2: Z- side
+        const wall2Body = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(MAP_SIZE / 2, WALL_HEIGHT / 2, WALL_THICKNESS / 2)), position: new CANNON.Vec3(0, WALL_HEIGHT / 2, -MAP_SIZE / 2), material: wallMaterial });
+        world.addBody(wall2Body);
+        const wall2Geometry = new THREE.BoxGeometry(MAP_SIZE, WALL_HEIGHT, WALL_THICKNESS);
+        const wall2Mesh = new THREE.Mesh(wall2Geometry, brickWallMaterial);
+        wall2Mesh.position.copy(wall2Body.position as any);
+        wall2Mesh.castShadow = true;
+        scene.add(wall2Mesh);
+        // NEW: Collision visual for Wall 2
+        const wall2VisualMesh = new THREE.Mesh(wall2Geometry, collisionMaterial);
+        wall2VisualMesh.position.copy(wall2Body.position as any);
+        wall2VisualMesh.quaternion.copy(wall2Body.quaternion as any);
+        wall2VisualMesh.castShadow = false;
+        wall2VisualMesh.receiveShadow = false;
+        wall2VisualMesh.visible = showColliders; // Set initial visibility
+        scene.add(wall2VisualMesh);
+        staticCollisionObjectsRef.current.push({ body: wall2Body, mesh: wall2VisualMesh });
+
+
+        // Wall 3: X+ side (rotated)
+        const wall3Body = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(WALL_THICKNESS / 2, WALL_HEIGHT / 2, MAP_SIZE / 2)), position: new CANNON.Vec3(MAP_SIZE / 2, WALL_HEIGHT / 2, 0), material: wallMaterial });
+        world.addBody(wall3Body);
+        const wall3Geometry = new THREE.BoxGeometry(WALL_THICKNESS, WALL_HEIGHT, MAP_SIZE);
+        const wall3Mesh = new THREE.Mesh(wall3Geometry, brickWallMaterial);
+        wall3Mesh.position.copy(wall3Body.position as any);
+        wall3Mesh.castShadow = true;
+        scene.add(wall3Mesh);
+        // NEW: Collision visual for Wall 3
+        const wall3VisualMesh = new THREE.Mesh(wall3Geometry, collisionMaterial);
+        wall3VisualMesh.position.copy(wall3Body.position as any);
+        wall3VisualMesh.quaternion.copy(wall3Body.quaternion as any);
+        wall3VisualMesh.castShadow = false;
+        wall3VisualMesh.receiveShadow = false;
+        wall3VisualMesh.visible = showColliders; // Set initial visibility
+        scene.add(wall3VisualMesh);
+        staticCollisionObjectsRef.current.push({ body: wall3Body, mesh: wall3VisualMesh });
+
+
+        // Wall 4: X- side (rotated)
+        const wall4Body = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(WALL_THICKNESS / 2, WALL_HEIGHT / 2, MAP_SIZE / 2)), position: new CANNON.Vec3(-MAP_SIZE / 2, WALL_HEIGHT / 2, 0), material: wallMaterial });
+        world.addBody(wall4Body);
+        const wall4Geometry = new THREE.BoxGeometry(WALL_THICKNESS, WALL_HEIGHT, MAP_SIZE);
+        const wall4Mesh = new THREE.Mesh(wall4Geometry, brickWallMaterial);
+        wall4Mesh.position.copy(wall4Body.position as any);
+        wall4Mesh.castShadow = true;
+        scene.add(wall4Mesh);
+        // NEW: Collision visual for Wall 4
+        const wall4VisualMesh = new THREE.Mesh(wall4Geometry, collisionMaterial);
+        wall4VisualMesh.position.copy(wall4Body.position as any);
+        wall4VisualMesh.quaternion.copy(wall4Body.quaternion as any);
+        wall4VisualMesh.castShadow = false;
+        wall4VisualMesh.receiveShadow = false;
+        wall4VisualMesh.visible = showColliders; // Set initial visibility
+        scene.add(wall4VisualMesh);
+        staticCollisionObjectsRef.current.push({ body: wall4Body, mesh: wall4VisualMesh });
+
+
+        // NEW: Separate brown object between the gate posts
+        const gateFillBody = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(GATE_WIDTH / 2, WALL_HEIGHT / 2, GATE_FILL_THICKNESS / 2)), position: new CANNON.Vec3(0, WALL_HEIGHT / 2, MAP_SIZE / 2), material: wallMaterial });
+        world.addBody(gateFillBody);
+        const gateFillGeometry = new THREE.BoxGeometry(GATE_WIDTH, WALL_HEIGHT, GATE_FILL_THICKNESS);
+        const gateFillMesh = new THREE.Mesh(gateFillGeometry, brownGateMaterial);
+        gateFillMesh.position.copy(gateFillBody.position as any);
+        gateFillMesh.castShadow = true;
+        scene.add(gateFillMesh);
+        // NEW: Collision visual for Gate Fill
+        const gateFillVisualMesh = new THREE.Mesh(gateFillGeometry, collisionMaterial);
+        gateFillVisualMesh.position.copy(gateFillBody.position as any);
+        gateFillVisualMesh.quaternion.copy(gateFillBody.quaternion as any);
+        gateFillVisualMesh.castShadow = false;
+        gateFillVisualMesh.receiveShadow = false;
+        gateFillVisualMesh.visible = showColliders; // Set initial visibility
+        scene.add(gateFillVisualMesh);
+        staticCollisionObjectsRef.current.push({ body: gateFillBody, mesh: gateFillVisualMesh });
+
+
+        // Add a path from the gate to the center
+        const PATH_WIDTH = GATE_WIDTH;
+        const PATH_LENGTH = MAP_SIZE / 2; // From Z+ wall to center (0,0,0)
+        const pathBody = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(PATH_WIDTH / 2, 0.05, PATH_LENGTH / 2)), position: new CANNON.Vec3(0, 0.05, MAP_SIZE / 4), material: pathMaterial });
+        world.addBody(pathBody);
+        const pathGeometry = new THREE.BoxGeometry(PATH_WIDTH, 0.1, PATH_LENGTH); // Thin box for visual path
+        const pathTexture = textureLoader.load('/textures/path_color.jpg');
+        pathTexture.wrapS = THREE.RepeatWrapping;
+        pathTexture.wrapT = THREE.RepeatWrapping;
+        pathTexture.repeat.set(1, 5); // Adjust repeat values as needed
+
+        const pathVisualMaterial = new THREE.MeshStandardMaterial({
+            map: pathTexture
+        });
+
+        const pathMesh = new THREE.Mesh(pathGeometry, pathVisualMaterial);
+        pathMesh.position.copy(pathBody.position as any);
+        pathMesh.receiveShadow = true;
+        scene.add(pathMesh);
+        // NEW: Collision visual for Path
+        const pathVisualMesh = new THREE.Mesh(pathGeometry, collisionMaterial);
+        pathVisualMesh.position.copy(pathBody.position as any);
+        pathVisualMesh.quaternion.copy(pathBody.quaternion as any);
+        pathVisualMesh.castShadow = false;
+        pathVisualMesh.receiveShadow = false;
+        pathVisualMesh.visible = showColliders; // Set initial visibility
+        scene.add(pathVisualMesh);
+        staticCollisionObjectsRef.current.push({ body: pathBody, mesh: pathVisualMesh });
+
+
+        // Add Black Gate Posts (Thicker, still at former gate location)
+        const gatePostGeometry = new THREE.BoxGeometry(GATE_POST_THICKNESS, GATE_POST_HEIGHT, GATE_POST_THICKNESS);
+        const gatePostVisualMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 }); // Black color for gate posts
+
+        // Left Gate Post
+        const leftGatePostBody = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(GATE_POST_THICKNESS / 2, GATE_POST_HEIGHT / 2, GATE_POST_THICKNESS / 2)), position: new CANNON.Vec3(-GATE_WIDTH / 2 - GATE_POST_THICKNESS / 2, GATE_POST_HEIGHT / 2, MAP_SIZE / 2), material: gatePostMaterial });
+        world.addBody(leftGatePostBody);
+        const leftGatePostMesh = new THREE.Mesh(gatePostGeometry, gatePostVisualMaterial);
+        leftGatePostMesh.position.copy(leftGatePostBody.position as any);
+        leftGatePostMesh.castShadow = true;
+        scene.add(leftGatePostMesh);
+        // NEW: Collision visual for Left Gate Post
+        const leftGatePostVisualMesh = new THREE.Mesh(gatePostGeometry, collisionMaterial);
+        leftGatePostVisualMesh.position.copy(leftGatePostBody.position as any);
+        leftGatePostVisualMesh.quaternion.copy(leftGatePostBody.quaternion as any);
+        leftGatePostVisualMesh.castShadow = false;
+        leftGatePostVisualMesh.receiveShadow = false;
+        leftGatePostVisualMesh.visible = showColliders; // Set initial visibility
+        scene.add(leftGatePostVisualMesh);
+        staticCollisionObjectsRef.current.push({ body: leftGatePostBody, mesh: leftGatePostVisualMesh });
+
+
+        // Right Gate Post
+        const rightGatePostBody = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(GATE_POST_THICKNESS / 2, GATE_POST_HEIGHT / 2, GATE_POST_THICKNESS / 2)), position: new CANNON.Vec3(GATE_WIDTH / 2 + GATE_POST_THICKNESS / 2, GATE_POST_HEIGHT / 2, MAP_SIZE / 2), material: gatePostMaterial });
+        world.addBody(rightGatePostBody);
+        const rightGatePostMesh = new THREE.Mesh(gatePostGeometry, gatePostVisualMaterial);
+        rightGatePostMesh.position.copy(rightGatePostBody.position as any);
+        rightGatePostMesh.castShadow = true;
+        scene.add(rightGatePostMesh);
+        // NEW: Collision visual for Right Gate Post
+        const rightGatePostVisualMesh = new THREE.Mesh(gatePostGeometry, collisionMaterial);
+        rightGatePostVisualMesh.position.copy(rightGatePostBody.position as any);
+        rightGatePostVisualMesh.quaternion.copy(rightGatePostBody.quaternion as any);
+        rightGatePostVisualMesh.castShadow = false;
+        rightGatePostVisualMesh.receiveShadow = false;
+        rightGatePostVisualMesh.visible = showColliders; // Set initial visibility
+        scene.add(rightGatePostVisualMesh);
+        staticCollisionObjectsRef.current.push({ body: rightGatePostBody, mesh: rightGatePostVisualMesh });
 
         // Player Body
-        playerBodyRef.current = new CANNON.Body({ // Assign to the ref
+        playerBodyRef.current = new CANNON.Body({
             mass: 5,
-            shape: new CANNON.Sphere(1.0), // Capsule shape is better for character, but sphere is simpler for now
-            position: new CANNON.Vec3(0, 5, 10), // Initial spawn position, adjusted to be above the flat ground
+            shape: new CANNON.Sphere(0.4),
+            position: new CANNON.Vec3(0, 5, 22),
+            linearDamping: 0.1,
+            material: playerMaterial,
         });
-        playerBodyRef.current.linearDamping = 0.9;
         world.addBody(playerBodyRef.current);
+
+        // NEW: Player Sphere Visual
+        const playerGeometry = new THREE.SphereGeometry(0.4); // Same radius as CANNON.Sphere
+        const playerVisualMesh = new THREE.Mesh(playerGeometry, collisionMaterial);
+        playerVisualMesh.castShadow = false;
+        playerVisualMesh.receiveShadow = false;
+        playerVisualMesh.visible = showColliders; // Set initial visibility
+        scene.add(playerVisualMesh);
+        playerVisualMeshRef.current = playerVisualMesh;
+
 
         console.log("App.tsx: Three.js and Cannon.js initialized.");
 
-    }, []);
+    }, [showColliders]); // Add showColliders to dependencies
 
     // Animation loop
     const animate = useCallback(() => {
@@ -340,9 +603,31 @@ export default function App() {
         // Sync player body with camera
         yaw.current.position.set(
             playerBody.position.x,
-            playerBody.position.y - 1, // Subtract radius to get "feet" position
+            playerBody.position.y - 0.3, // Adjust Y position relative to player body center to achieve desired eye height
             playerBody.position.z
         );
+
+        // NEW: Sync player visual mesh and apply visibility
+        if (playerVisualMeshRef.current) {
+            playerVisualMeshRef.current.position.copy(playerBody.position as any);
+            playerVisualMeshRef.current.quaternion.copy(playerBody.quaternion as any);
+            playerVisualMeshRef.current.visible = showColliders;
+        }
+
+        // NEW: Sync static collision visuals and apply visibility
+        staticCollisionObjectsRef.current.forEach(({ body, mesh }) => {
+            mesh.position.copy(body.position as any);
+            mesh.quaternion.copy(body.quaternion as any);
+            mesh.visible = showColliders;
+        });
+
+        // NEW: Sync dynamic (model) collision visuals and apply visibility
+        dynamicCollisionObjectsRef.current.forEach(({ body, mesh }) => {
+            mesh.position.copy(body.position as any);
+            mesh.quaternion.copy(body.quaternion as any);
+            mesh.visible = showColliders;
+        });
+
 
         // Apply movement with realistic walking speed (1.4 m/s)
         const moveSpeed = 0.8; // Realistic walking speed in m/s
@@ -385,13 +670,13 @@ export default function App() {
         if (lookDelta.current.x !== 0 || lookDelta.current.y !== 0) {
             yaw.current.rotation.y -= lookDelta.current.x * 0.005;
             pitch.current.rotation.x -= lookDelta.current.y * 0.005;
-            pitch.current.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch.current.rotation.x));
-            lookDelta.current.x = lookDelta.current.y = 0;
+            pitch.current.rotation.x = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch.current.rotation.x));
+            lookDelta.current.x = lookDelta.current.y = 0; // Reset lookDelta after applying
         }
 
         // Render the scene
         renderer.render(scene, camera);
-    }, []);
+    }, [showColliders]); // Add showColliders to dependencies
 
 
     // Effect for initializing Three.js and Cannon.js
@@ -399,6 +684,9 @@ export default function App() {
         initThreeAndCannon();
         const currentMountRef = mountRef.current; // Capture current ref value for cleanup
         animationFrameId.current = requestAnimationFrame(animate); // Start animation loop
+
+        // Capture the current scene reference for cleanup closure
+        const sceneForCleanup = sceneRef.current;
 
         // Cleanup function
         return () => {
@@ -413,6 +701,10 @@ export default function App() {
                     currentMountRef.removeChild(rendererRef.current.domElement);
                 }
             }
+
+            const world = worldRef.current; // Capture world instance
+
+
             // Nullify refs for proper cleanup
             sceneRef.current = null;
             cameraRef.current = null;
@@ -420,8 +712,62 @@ export default function App() {
             worldRef.current = null;
             playerBodyRef.current = null;
             gltfModelRef.current = null;
-            modelBodiesRef.current = [];
+
+            // Cleanup for Ground
+            if (groundMeshRef.current) {
+                // Use the captured sceneForCleanup
+                if (sceneForCleanup && groundMeshRef.current) {
+                    sceneForCleanup.remove(groundMeshRef.current);
+                }
+                groundMeshRef.current.geometry.dispose();
+                (groundMeshRef.current.material as THREE.Material).dispose();
+                groundMeshRef.current = null;
+            }
+
+            if (world && groundBodyRef.current) {
+                world.remove(groundBodyRef.current);
+            }
+
+            // NEW: Cleanup for player visual mesh
+            if (playerVisualMeshRef.current) {
+                // Use the captured sceneForCleanup
+                if (sceneForCleanup && playerVisualMeshRef.current) {
+                    sceneForCleanup.remove(playerVisualMeshRef.current);
+                }
+                playerVisualMeshRef.current.geometry.dispose();
+                (playerVisualMeshRef.current.material as THREE.Material).dispose();
+                playerVisualMeshRef.current = null;
+            }
+
+            // NEW: Cleanup for dynamic collision objects (model colliders)
+            if (dynamicCollisionObjectsRef.current.length > 0) {
+                dynamicCollisionObjectsRef.current.forEach(({ body, mesh }) => {
+                    worldRef.current?.remove(body);
+                    // Use the captured sceneForCleanup
+                    if (sceneForCleanup && mesh) {
+                        sceneForCleanup.remove(mesh);
+                    }
+                    mesh.geometry.dispose();
+                    (mesh.material as THREE.Material).dispose();
+                });
+                dynamicCollisionObjectsRef.current = [];
+            }
+
+            // NEW: Cleanup for static collision objects (walls, etc.)
+            if (staticCollisionObjectsRef.current.length > 0) {
+                staticCollisionObjectsRef.current.forEach(({ body, mesh }) => {
+                    worldRef.current?.remove(body);
+                    // Use the captured sceneForCleanup
+                    if (sceneForCleanup && mesh) {
+                        sceneForCleanup.remove(mesh);
+                    }
+                    mesh.geometry.dispose();
+                    (mesh.material as THREE.Material).dispose();
+                });
+                staticCollisionObjectsRef.current = [];
+            }
         };
+
     }, [initThreeAndCannon, animate]);
 
     // Load model list from public/models/houses/index.json
@@ -503,7 +849,7 @@ export default function App() {
                 pitch.current.rotation.x -= movementY * 0.002;
 
                 // Clamp vertical look to prevent flipping
-                pitch.current.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch.current.rotation.x));
+                pitch.current.rotation.x = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch.current.rotation.x));
             }
         };
 
@@ -589,7 +935,7 @@ export default function App() {
 
     return (
         <Box ref={mountRef} h="100vh" w="100vw" overflow="hidden" position="relative">
-            {/* UI for model selection */}
+            {/* UI for model selection and collision toggle */}
             <VStack
                 position="absolute"
                 top="1rem"
@@ -598,6 +944,17 @@ export default function App() {
                 spacing={2}
                 align="flex-start"
             >
+                {/* NEW: Collision visibility toggle button */}
+                <Button
+                    onClick={() => setShowColliders(prev => !prev)}
+                    colorScheme={showColliders ? "red" : "gray"}
+                    variant="outline"
+                    size="sm"
+                >
+                    {showColliders ? "Hide Colliders" : "Show Colliders"}
+                </Button>
+
+                <Text fontSize="sm" color="white" mt={4}>Select Model:</Text>
                 {modelList.map((modelName, index) => (
                     <Button
                         key={modelName}
@@ -614,80 +971,80 @@ export default function App() {
             {/* Mobile Controls */}
             {isControlsVisible && isPortrait && (
                 <>
-                    {/* Movement Joystick */}
+                    {/* Forward Button */}
+                    <Button
+                        position="absolute"
+                        bottom="10rem" // Adjust position as needed
+                        left="2rem"
+                        zIndex="10"
+                        size="lg"
+                        colorScheme="blue"
+                        onTouchStart={() => {
+                            moveForward.current = true;
+                            moveBackward.current = false; // Ensure only one is true
+                        }}
+                        onTouchEnd={() => {
+                            moveForward.current = false;
+                        }}
+                    >
+                        Forward
+                    </Button>
+
+                    {/* Backward Button */}
+                    <Button
+                        position="absolute"
+                        bottom="2rem" // Adjust position as needed
+                        left="2rem"
+                        zIndex="10"
+                        size="lg"
+                        colorScheme="blue"
+                        onTouchStart={() => {
+                            moveBackward.current = true;
+                            moveForward.current = false; // Ensure only one is true
+                        }}
+                        onTouchEnd={() => {
+                            moveBackward.current = false;
+                        }}
+                    >
+                        Backward
+                    </Button>
+
+                    {/* Full-screen Look Area */}
                     <Box
                         position="absolute"
-                        bottom="2rem"
-                        left="2rem"
-                        w="8rem"
-                        h="8rem"
-                        bg="whiteAlpha.200"
-                        borderRadius="full"
-                        zIndex="10"
-                        onTouchMove={e => {
+                        top="0"
+                        left="0"
+                        right="0"
+                        bottom="0"
+                        zIndex="5" // Lower zIndex than buttons
+                        onTouchStart={(e) => {
                             if (e.touches.length > 0) {
                                 const t = e.touches[0];
-                                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                const centerX = r.left + r.width / 2;
-                                const centerY = r.top + r.height / 2;
-
-                                const deltaX = (t.clientX - centerX);
-                                const deltaY = (t.clientY - centerY);
-
-                                // Normalize deltas and set movement flags
-                                moveForward.current = deltaY < -20;
-                                moveBackward.current = deltaY > 20;
-                                moveLeft.current = deltaX < -20;
-                                moveRight.current = deltaX > 20;
+                                lookDelta.current.prevClientX = t.clientX;
+                                lookDelta.current.prevClientY = t.clientY;
+                            }
+                            // Do NOT reset lookDelta.x/y here. It's reset in animate loop.
+                        }}
+                        onTouchMove={(e) => {
+                            if (e.touches.length > 0 && lookDelta.current.prevClientX !== undefined && lookDelta.current.prevClientY !== undefined) {
+                                const currentTouch = e.touches[0];
+                                lookDelta.current.x = currentTouch.clientX - lookDelta.current.prevClientX;
+                                lookDelta.current.y = currentTouch.clientY - lookDelta.current.prevClientY;
+                                lookDelta.current.prevClientX = currentTouch.clientX;
+                                lookDelta.current.prevClientY = currentTouch.clientY;
                             }
                         }}
                         onTouchEnd={() => {
-                            moveForward.current = moveBackward.current = moveLeft.current = moveRight.current = false;
+                            lookDelta.current.prevClientX = undefined; // Clear previous touch position
+                            lookDelta.current.prevClientY = undefined;
+                            // Do NOT reset lookDelta.x/y here. It's reset in animate loop.
                         }}
                         onTouchCancel={() => {
-                            moveForward.current = moveBackward.current = moveLeft.current = moveRight.current = false;
+                            lookDelta.current.prevClientX = undefined; // Clear previous touch position
+                            lookDelta.current.prevClientY = undefined;
+                            // Do NOT reset lookDelta.x/y here. It's reset in animate loop.
                         }}
-                        display="flex"
-                        alignItems="center"
-                        justifyContent="center"
-                        color="white"
-                        fontSize="sm"
-                    >
-                        Move
-                    </Box>
-
-                    {/* Look Joystick */}
-                    <Box
-                        position="absolute"
-                        bottom="2rem"
-                        right="2rem"
-                        w="8rem"
-                        h="8rem"
-                        bg="whiteAlpha.200"
-                        borderRadius="full"
-                        zIndex="10"
-                        onTouchMove={e => {
-                            if (e.touches.length > 0) {
-                                const t = e.touches[0];
-                                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                const centerX = r.left + r.width / 2;
-                                const centerY = r.top + r.height / 2;
-
-                                // Calculate movement relative to the center of the touch area
-                                lookDelta.current.x = (t.clientX - centerX) * 0.1;
-                                lookDelta.current.y = (t.clientY - centerY) * 0.1;
-                            }
-                        }}
-                        onTouchEnd={() => { lookDelta.current.x = lookDelta.current.y = 0; }}
-                        onTouchCancel={() => { lookDelta.current.x = lookDelta.current.y = 0; }}
-                        display="flex"
-                        alignItems="center"
-                        justifyContent="center"
-                        color="white"
-                        fontSize="sm"
-                    >
-                        Look
-                    </Box>
+                    />
                 </>
             )}
         </Box>
