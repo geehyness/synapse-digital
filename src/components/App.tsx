@@ -67,7 +67,7 @@ export default function App() {
     const [modelList, setModelList] = useState<string[]>([]);
     const [selectedModelIndex, setSelectedModelIndex] = useState<number>(0);
     const [isPointerLocked, setIsPointerLocked] = useState(false);
-    const isPortrait = useIsPortrait();
+    // const isPortrait = useIsPortrait(); // No longer directly used in rendering condition for controls
     const isControlsVisible = useBreakpointValue({ base: true, md: false });
 
     // NEW: State for controlling collision object visibility
@@ -1002,7 +1002,7 @@ export default function App() {
             </VStack>
 
             {/* Mobile Controls */}
-            {isControlsVisible && isPortrait && (
+            {isControlsVisible && ( // Removed `isPortrait` condition here
                 <>
                     {/* Forward Button */}
                     <Button

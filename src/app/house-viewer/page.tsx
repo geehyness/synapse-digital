@@ -1,10 +1,10 @@
-'use client'; // This directive is crucial as the 3D scene uses client-side hooks and DOM manipulation
+// 'use client'; // Already present in your original file
 
 import React, { useEffect } from 'react';
-import App from '../../components/App'; // Adjust the path if your App.js is in a different location
-import { Box } from '@chakra-ui/react'; // Import Box from Chakra UI
-import { usePageTransition } from '@/components/PageTransitionProvider'; // Import the page transition hook
-import { usePathname } from 'next/navigation'; // To get the current path
+import App from '../../components/App';
+import { Box } from '@chakra-ui/react';
+import { usePageTransition } from '@/components/PageTransitionProvider';
+import { usePathname } from 'next/navigation';
 
 const HouseViewerPage = () => {
   const { signalPageLoaded } = usePageTransition();
@@ -13,19 +13,27 @@ const HouseViewerPage = () => {
   useEffect(() => {
     // Signal that this page has loaded, so the page transition overlay can hide
     signalPageLoaded();
+
+    // Disable pull-down-to-refresh
+    document.body.style.overscrollBehaviorY = 'contain';
+    document.body.style.touchAction = 'none'; // Prevents default touch actions like pan-y for scroll
+
+    // Clean up: Re-enable default behavior when component unmounts
+    return () => {
+      document.body.style.overscrollBehaviorY = 'auto';
+      document.body.style.touchAction = 'auto';
+    };
   }, [signalPageLoaded, pathname]);
 
   return (
-    // The Box here is used to override the default padding from layout.tsx
-    // and ensure the 3D scene takes up the full viewport height.
     <Box
       as="main"
-      minH="100vh" // Ensure it takes full viewport height
-      w="100vw"    // Ensure it takes full viewport width
-      p={0}        // Remove any padding
-      m={0}        // Remove any margin
-      overflow="hidden" // Hide overflow to prevent scrollbars
-      position="relative" // Needed for absolute positioning of children if any
+      minH="100vh"
+      w="100vw"
+      p={0}
+      m={0}
+      overflow="hidden"
+      position="relative"
     >
       <App />
     </Box>
