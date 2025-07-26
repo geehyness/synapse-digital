@@ -7,6 +7,9 @@ import * as CANNON from "cannon";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 
+// NEW: Look Speed variable at the top
+const lookSpeed = 0.05; // Adjustable look speed
+
 // Hook to detect portrait orientation
 function useIsPortrait() {
     const [isPortrait, setIsPortrait] = useState(
@@ -671,16 +674,12 @@ export default function App() {
             velocity.z += rightVector.z * moveSpeed;
         }
 
-        // Apply velocity to player body
-        playerBody.velocity.x = velocity.x;
-        playerBody.velocity.z = velocity.z;
-
-        // Apply look delta
+        // Apply look delta (now with continuous rotation)
         if (lookDelta.current.x !== 0 || lookDelta.current.y !== 0) {
-            yaw.current.rotation.y -= lookDelta.current.x * 0.005;
-            pitch.current.rotation.x -= lookDelta.current.y * 0.005;
+            yaw.current.rotation.y -= lookDelta.current.x * lookSpeed; // Use lookSpeed
+            pitch.current.rotation.x -= lookDelta.current.y * lookSpeed; // Use lookSpeed
             pitch.current.rotation.x = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch.current.rotation.x));
-            lookDelta.current.x = lookDelta.current.y = 0; // Reset lookDelta after applying
+            // Removed: lookDelta.current.x = lookDelta.current.y = 0; // NOT resetting here
         }
 
         // Render the scene
@@ -902,17 +901,17 @@ export default function App() {
                 case "KeyD":
                     moveRight.current = true;
                     break;
-                case "ArrowUp":
-                    lookDelta.current.y = 1; // Look up
+                case "ArrowUp": // Flipped: ArrowUp now looks down
+                    lookDelta.current.y = -1;
                     break;
-                case "ArrowDown":
-                    lookDelta.current.y = -1; // Look down
+                case "ArrowDown": // Flipped: ArrowDown now looks up
+                    lookDelta.current.y = 1;
                     break;
-                case "ArrowLeft":
-                    lookDelta.current.x = 1; // Look left
+                case "ArrowLeft": // Flipped: ArrowLeft now looks right
+                    lookDelta.current.x = -1;
                     break;
-                case "ArrowRight":
-                    lookDelta.current.x = -1; // Look right
+                case "ArrowRight": // Flipped: ArrowRight now looks left
+                    lookDelta.current.x = 1;
                     break;
                 case "Digit1":
                     if (modelList.length > 0) {
@@ -1064,9 +1063,6 @@ export default function App() {
                         Backward
                     </Button>
 
-                    {/* Removed Left Button (for movement) */}
-                    {/* Removed Right Button (for movement) */}
-
                     {/* D-pad style buttons for Looking Around */}
                     {/* Positioned for a cross layout */}
                     <Button
@@ -1076,7 +1072,7 @@ export default function App() {
                         zIndex="10"
                         size="md" // Adjusted size
                         colorScheme="teal"
-                        onTouchStart={() => { lookDelta.current.y = 1; }} // Look Up
+                        onTouchStart={() => { lookDelta.current.y = -1; }} // Flipped: Look Up button now looks Down
                         onTouchEnd={() => { lookDelta.current.y = 0; }}
                         isDisabled={isLoading}
                     >
@@ -1089,7 +1085,7 @@ export default function App() {
                         zIndex="10"
                         size="md" // Adjusted size
                         colorScheme="teal"
-                        onTouchStart={() => { lookDelta.current.y = -1; }} // Look Down
+                        onTouchStart={() => { lookDelta.current.y = 1; }} // Flipped: Look Down button now looks Up
                         onTouchEnd={() => { lookDelta.current.y = 0; }}
                         isDisabled={isLoading}
                     >
@@ -1102,7 +1098,7 @@ export default function App() {
                         zIndex="10"
                         size="md" // Adjusted size
                         colorScheme="teal"
-                        onTouchStart={() => { lookDelta.current.x = 1; }} // Look Left
+                        onTouchStart={() => { lookDelta.current.x = -1; }} // Flipped: Look Left button now looks Right
                         onTouchEnd={() => { lookDelta.current.x = 0; }}
                         isDisabled={isLoading}
                     >
@@ -1115,7 +1111,7 @@ export default function App() {
                         zIndex="10"
                         size="md" // Adjusted size
                         colorScheme="teal"
-                        onTouchStart={() => { lookDelta.current.x = -1; }} // Look Right
+                        onTouchStart={() => { lookDelta.current.x = 1; }} // Flipped: Look Right button now looks Left
                         onTouchEnd={() => { lookDelta.current.x = 0; }}
                         isDisabled={isLoading}
                     >
