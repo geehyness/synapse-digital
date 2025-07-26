@@ -14,7 +14,7 @@ import { FiGithub, FiLinkedin, FiTwitter } from 'react-icons/fi';
 import { PortableText, PortableTextReactComponents } from '@portabletext/react';
 
 const DEFAULT_CONFIG = {
-  starCount: 100, // Default star count
+  starCount: 50, // Default star count
   minSize: 2,
   maxSize: 10,
   minDepth: 0.1,
@@ -57,6 +57,7 @@ const HomePageClient = () => {
   const initStarsRef = useRef<(() => void) | null>(null);
 
   // Function to create/update black hole gradients - Moved outside useEffect
+  // Removed config-related dependencies as it uses configRef.current
   const updateBlackHoleGradients = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -90,7 +91,7 @@ const HomePageClient = () => {
     } else {
       bhDiskGradientRef.current = null;
     }
-  }, [config.blackHole.mass, config.blackHole.attractionRadius, config.blackHole.accretionDisk]);
+  }, []); // Removed unnecessary dependencies from useCallback
 
 
   useEffect(() => {
@@ -550,7 +551,8 @@ const HomePageClient = () => {
           <Text
             as="a"
             href={href}
-            isExternal
+            target="_blank" // Add target="_blank"
+            rel="noopener noreferrer" // Add rel="noopener noreferrer" for security
             color="brand.400"
             _hover={{ textDecoration: 'underline' }}
           >
@@ -570,8 +572,7 @@ const HomePageClient = () => {
             objectFit="contain"
             maxH="400px"
             mx="auto"
-            display="block"
-          />
+            display="block" />
           {value.caption && (
             <Text mt={2} fontSize="sm" color="gray.500" textAlign="center">
               {value.caption}
@@ -580,6 +581,13 @@ const HomePageClient = () => {
         </Box>
       ),
     },
+    // Changed undefined to functions returning null to satisfy PortableTextReactComponents type
+    hardBreak: false,
+    unknownMark: () => null,
+    unknownType: () => null,
+    unknownBlockStyle: () => null,
+    unknownList: () => null,
+    unknownListItem: () => null
   };
 
   const services = [
