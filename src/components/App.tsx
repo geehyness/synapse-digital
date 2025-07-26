@@ -353,7 +353,7 @@ export default function App() {
         const grassTexture = textureLoader.load('/textures/grass_color.jpg');
         grassTexture.wrapS = THREE.RepeatWrapping;
         grassTexture.wrapT = THREE.RepeatWrapping;
-        grassTexture.repeat.set(20, 20); // Adjust repeat values as needed for good tiling
+        grassTexture.repeat.set(2, 2); // Adjust repeat values as needed for good tiling
 
         const groundVisualMaterial = new THREE.MeshStandardMaterial({
             map: grassTexture
