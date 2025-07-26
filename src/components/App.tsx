@@ -1,11 +1,11 @@
 // src/components/App.tsx
 "use client";
 import React, { useRef, useEffect, useState, useCallback } from "react";
-import { Box, VStack, Button, Text, useBreakpointValue } from "@chakra-ui/react";
+import { Box, VStack, Button, Text, useBreakpointValue, Spinner, Center } from "@chakra-ui/react"; // Import Spinner and Center
 import * as THREE from "three";
 import * as CANNON from "cannon";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js"; // Corrected import path
+import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 
 // Hook to detect portrait orientation
 function useIsPortrait() {
@@ -72,15 +72,19 @@ export default function App() {
 
     // NEW: State for controlling collision object visibility
     const [showColliders, setShowColliders] = useState(false); // Set to true by default to see them initially
+    // NEW: Loading state for spinner
+    const [isLoading, setIsLoading] = useState(true); // Initial state set to true
 
     // Animation frame ID for cleanup
     const animationFrameId = useRef<number | null>(null);
 
     const loadModel = useCallback(async (modelName: string, modelIndex: number, scene: THREE.Scene, world: CANNON.World) => {
         console.log("Attempting to load model:", modelName);
+        setIsLoading(true); // Set loading to true when starting model load
 
         if (!scene || !world) {
             console.log("loadModel: Scene or World not initialized yet. Skipping model load.");
+            setIsLoading(false); // Set loading to false if pre-conditions not met
             return;
         }
 
@@ -208,6 +212,8 @@ export default function App() {
 
         } catch (error) {
             console.error("loadModel: Error loading GLTF model:", error);
+        } finally {
+            setIsLoading(false); // Set loading to false after model is loaded or an error occurs
         }
     }, [showColliders]); // Add showColliders to dependencies
 
@@ -220,6 +226,7 @@ export default function App() {
         }
 
         console.log("App.tsx: Initializing Three.js and Cannon.js...");
+        setIsLoading(true); // Set loading to true when initializing
 
         const textureLoader = new THREE.TextureLoader();
 
@@ -260,8 +267,10 @@ export default function App() {
                 scene.environment = texture; // Global environment lighting
                 scene.background = texture; // Set background to HDR as well
                 console.log("App.tsx: HDR environment map loaded and applied.");
+                setIsLoading(false); // Set loading to false after HDR is loaded
             }, undefined, (error) => {
                 console.error("App.tsx: Error loading HDR environment map:", error);
+                setIsLoading(false); // Set loading to false on error
             });
 
         // Cannon.js World
@@ -491,9 +500,9 @@ export default function App() {
         // Add a path from the gate to the center
         const PATH_WIDTH = GATE_WIDTH;
         const PATH_LENGTH = MAP_SIZE / 2; // From Z+ wall to center (0,0,0)
-        const pathBody = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(PATH_WIDTH / 2, 0.05, PATH_LENGTH / 2)), position: new CANNON.Vec3(0, 0.05, MAP_SIZE / 4), material: pathMaterial });
+        const pathBody = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(PATH_WIDTH / 2, 0.05, PATH_LENGTH / 2)), position: new CANNON.Vec3(0, 0.001, MAP_SIZE / 4), material: pathMaterial });
         world.addBody(pathBody);
-        const pathGeometry = new THREE.BoxGeometry(PATH_WIDTH, 0.1, PATH_LENGTH); // Thin box for visual path
+        const pathGeometry = new THREE.BoxGeometry(PATH_WIDTH, 0.02, PATH_LENGTH); // Thin box for visual path
         const pathTexture = textureLoader.load('/textures/path_color.jpg');
         pathTexture.wrapS = THREE.RepeatWrapping;
         pathTexture.wrapT = THREE.RepeatWrapping;
@@ -630,7 +639,7 @@ export default function App() {
 
 
         // Apply movement with realistic walking speed (1.4 m/s)
-        const moveSpeed = 0.8; // Realistic walking speed in m/s
+        const moveSpeed = 0.4; // Realistic walking speed in m/s
         const velocity = new CANNON.Vec3(0, playerBody.velocity.y, 0);
 
         // Calculate movement direction based on camera orientation
@@ -789,6 +798,8 @@ export default function App() {
                 }
             } catch (error) {
                 console.error("App.tsx: Failed to fetch model list:", error);
+            } finally {
+                // Do not set isLoading to false here, as model loading is separate
             }
         };
         fetchModelList();
@@ -935,6 +946,27 @@ export default function App() {
 
     return (
         <Box ref={mountRef} h="100vh" w="100vw" overflow="hidden" position="relative">
+            {/* Conditional Spinner Overlay */}
+            {isLoading && (
+                <Center
+                    position="absolute"
+                    top="0"
+                    left="0"
+                    right="0"
+                    bottom="0"
+                    bg="rgba(0, 0, 0, 0.7)" // Semi-transparent black background
+                    zIndex="overlay" // Chakra UI's zIndex for overlays
+                >
+                    <Spinner
+                        thickness="4px"
+                        speed="0.65s"
+                        emptyColor="gray.200"
+                        color="blue.500"
+                        size="xl"
+                    />
+                </Center>
+            )}
+
             {/* UI for model selection and collision toggle */}
             <VStack
                 position="absolute"
@@ -962,6 +994,7 @@ export default function App() {
                         colorScheme={selectedModelIndex === index ? "brand" : "gray"}
                         variant={selectedModelIndex === index ? "solid" : "outline"}
                         size="sm"
+                        isDisabled={isLoading} // Disable buttons while loading
                     >
                         {modelName.replace(".glb", "")}
                     </Button>
@@ -986,6 +1019,7 @@ export default function App() {
                         onTouchEnd={() => {
                             moveForward.current = false;
                         }}
+                        isDisabled={isLoading} // Disable buttons while loading
                     >
                         Forward
                     </Button>
@@ -1005,6 +1039,7 @@ export default function App() {
                         onTouchEnd={() => {
                             moveBackward.current = false;
                         }}
+                        isDisabled={isLoading} // Disable buttons while loading
                     >
                         Backward
                     </Button>
@@ -1044,6 +1079,7 @@ export default function App() {
                             lookDelta.current.prevClientY = undefined;
                             // Do NOT reset lookDelta.x/y here. It's reset in animate loop.
                         }}
+                        pointerEvents={isLoading ? "none" : "auto"} // Disable touch events on the look area while loading
                     />
                 </>
             )}
