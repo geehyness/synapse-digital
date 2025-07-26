@@ -7,6 +7,8 @@ import { client, urlForImage } from '@/lib/sanity'
 import { groq } from 'next-sanity'
 import { SiteSettings } from '@/types/sanity'
 
+import { Analytics } from "@vercel/analytics/next"
+
 const inter = Inter({ subsets: ['latin'] })
 
 async function getSiteSettings(): Promise<SiteSettings | null> {
@@ -46,6 +48,7 @@ export default async function RootLayout({
             siteTitle={siteSettings?.title || "Synapse Digital"}
             siteLogoUrl={siteLogoUrl}
           >
+            <Analytics />
             {children}
           </ClientLayout>
         </Providers>

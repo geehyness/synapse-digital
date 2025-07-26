@@ -1,4 +1,4 @@
-// 'use client'; // Already present in your original file
+'use client'; // This line must be uncommented and at the top
 
 import React, { useEffect } from 'react';
 import App from '../../components/App';
