@@ -8,7 +8,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 
 // NEW: Look Speed variable at the top
-const lookSpeed = 0.02; // Adjustable look speed
+const lookSpeed = 0.05; // Adjustable look speed
 
 // Hook to detect portrait orientation
 function useIsPortrait() {
@@ -683,8 +683,8 @@ export default function App() {
             pitch.current.rotation.x -= lookDelta.current.y * lookSpeed; // Use lookSpeed
             pitch.current.rotation.x = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch.current.rotation.x));
             // Add these lines to reset lookDelta after applying
-            lookDelta.current.x = 0;
-            lookDelta.current.y = 0;
+            lookDelta.current.x = 0; // Reset horizontal look delta
+            lookDelta.current.y = 0; // Reset vertical look delta
         }
 
         // Render the scene
