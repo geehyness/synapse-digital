@@ -902,6 +902,18 @@ export default function App() {
                 case "KeyD":
                     moveRight.current = true;
                     break;
+                case "ArrowUp":
+                    lookDelta.current.y = 1; // Look up
+                    break;
+                case "ArrowDown":
+                    lookDelta.current.y = -1; // Look down
+                    break;
+                case "ArrowLeft":
+                    lookDelta.current.x = 1; // Look left
+                    break;
+                case "ArrowRight":
+                    lookDelta.current.x = -1; // Look right
+                    break;
                 case "Digit1":
                     if (modelList.length > 0) {
                         setSelectedModelIndex(0);
@@ -931,6 +943,14 @@ export default function App() {
                     break;
                 case "KeyD":
                     moveRight.current = false;
+                    break;
+                case "ArrowUp":
+                case "ArrowDown":
+                    lookDelta.current.y = 0; // Stop vertical look
+                    break;
+                case "ArrowLeft":
+                case "ArrowRight":
+                    lookDelta.current.x = 0; // Stop horizontal look
                     break;
             }
         };
@@ -1044,43 +1064,103 @@ export default function App() {
                         Backward
                     </Button>
 
-                    {/* Full-screen Look Area */}
-                    <Box
+                    {/* Left Button (for movement) */}
+                    <Button
                         position="absolute"
-                        top="0"
-                        left="0"
-                        right="0"
-                        bottom="0"
-                        zIndex="5" // Lower zIndex than buttons
-                        onTouchStart={(e) => {
-                            if (e.touches.length > 0) {
-                                const t = e.touches[0];
-                                lookDelta.current.prevClientX = t.clientX;
-                                lookDelta.current.prevClientY = t.clientY;
-                            }
-                            // Do NOT reset lookDelta.x/y here. It's reset in animate loop.
-                        }}
-                        onTouchMove={(e) => {
-                            if (e.touches.length > 0 && lookDelta.current.prevClientX !== undefined && lookDelta.current.prevClientY !== undefined) {
-                                const currentTouch = e.touches[0];
-                                lookDelta.current.x = currentTouch.clientX - lookDelta.current.prevClientX;
-                                lookDelta.current.y = currentTouch.clientY - lookDelta.current.prevClientY;
-                                lookDelta.current.prevClientX = currentTouch.clientX;
-                                lookDelta.current.prevClientY = currentTouch.clientY;
-                            }
+                        bottom="6rem" // Adjust position as needed
+                        left="8rem" // Adjust position as needed
+                        zIndex="10"
+                        size="lg"
+                        colorScheme="blue"
+                        onTouchStart={() => {
+                            moveLeft.current = true;
+                            moveRight.current = false;
                         }}
                         onTouchEnd={() => {
-                            lookDelta.current.prevClientX = undefined; // Clear previous touch position
-                            lookDelta.current.prevClientY = undefined;
-                            // Do NOT reset lookDelta.x/y here. It's reset in animate loop.
+                            moveLeft.current = false;
                         }}
-                        onTouchCancel={() => {
-                            lookDelta.current.prevClientX = undefined; // Clear previous touch position
-                            lookDelta.current.prevClientY = undefined;
-                            // Do NOT reset lookDelta.x/y here. It's reset in animate loop.
+                        isDisabled={isLoading}
+                    >
+                        Left
+                    </Button>
+
+                    {/* Right Button (for movement) */}
+                    <Button
+                        position="absolute"
+                        bottom="6rem" // Adjust position as needed
+                        left="14rem" // Adjust position as needed
+                        zIndex="10"
+                        size="lg"
+                        colorScheme="blue"
+                        onTouchStart={() => {
+                            moveRight.current = true;
+                            moveLeft.current = false;
                         }}
-                        pointerEvents={isLoading ? "none" : "auto"} // Disable touch events on the look area while loading
-                    />
+                        onTouchEnd={() => {
+                            moveRight.current = false;
+                        }}
+                        isDisabled={isLoading}
+                    >
+                        Right
+                    </Button>
+
+
+                    {/* Arrow Keys for Looking Around (new buttons for touch) */}
+                    <Button
+                        position="absolute"
+                        bottom="10rem"
+                        right="2rem"
+                        zIndex="10"
+                        size="lg"
+                        colorScheme="teal"
+                        onTouchStart={() => { lookDelta.current.y = 1; }} // Look Up
+                        onTouchEnd={() => { lookDelta.current.y = 0; }}
+                        isDisabled={isLoading}
+                    >
+                        Up
+                    </Button>
+                    <Button
+                        position="absolute"
+                        bottom="2rem"
+                        right="2rem"
+                        zIndex="10"
+                        size="lg"
+                        colorScheme="teal"
+                        onTouchStart={() => { lookDelta.current.y = -1; }} // Look Down
+                        onTouchEnd={() => { lookDelta.current.y = 0; }}
+                        isDisabled={isLoading}
+                    >
+                        Down
+                    </Button>
+                    <Button
+                        position="absolute"
+                        bottom="6rem"
+                        right="8rem"
+                        zIndex="10"
+                        size="lg"
+                        colorScheme="teal"
+                        onTouchStart={() => { lookDelta.current.x = 1; }} // Look Left
+                        onTouchEnd={() => { lookDelta.current.x = 0; }}
+                        isDisabled={isLoading}
+                    >
+                        Left
+                    </Button>
+                    <Button
+                        position="absolute"
+                        bottom="6rem"
+                        right="14rem"
+                        zIndex="10"
+                        size="lg"
+                        colorScheme="teal"
+                        onTouchStart={() => { lookDelta.current.x = -1; }} // Look Right
+                        onTouchEnd={() => { lookDelta.current.x = 0; }}
+                        isDisabled={isLoading}
+                    >
+                        Right
+                    </Button>
+
+                    {/* Removed Full-screen Look Area */}
+                    {/* The Box that handled touch-based dragging for looking around is removed */}
                 </>
             )}
         </Box>
