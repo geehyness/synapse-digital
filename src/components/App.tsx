@@ -674,18 +674,22 @@ export default function App() {
             velocity.z += rightVector.z * moveSpeed;
         }
 
+        playerBody.velocity.x = velocity.x;
+        playerBody.velocity.z = velocity.z;
+
         // Apply look delta (now with continuous rotation)
         if (lookDelta.current.x !== 0 || lookDelta.current.y !== 0) {
             yaw.current.rotation.y -= lookDelta.current.x * lookSpeed; // Use lookSpeed
             pitch.current.rotation.x -= lookDelta.current.y * lookSpeed; // Use lookSpeed
             pitch.current.rotation.x = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch.current.rotation.x));
-            // Removed: lookDelta.current.x = lookDelta.current.y = 0; // NOT resetting here
+            // Add these lines to reset lookDelta after applying
+            lookDelta.current.x = 0;
+            lookDelta.current.y = 0;
         }
 
         // Render the scene
         renderer.render(scene, camera);
     }, [showColliders]); // Add showColliders to dependencies
-
 
     // Effect for initializing Three.js and Cannon.js
     useEffect(() => {
@@ -1032,10 +1036,12 @@ export default function App() {
                         size="lg"
                         colorScheme="blue"
                         onTouchStart={() => {
+                            console.log("Forward button touchStart: setting moveForward.current to true");
                             moveForward.current = true;
                             moveBackward.current = false; // Ensure only one is true
                         }}
                         onTouchEnd={() => {
+                            console.log("Forward button touchEnd: setting moveForward.current to false");
                             moveForward.current = false;
                         }}
                         isDisabled={isLoading} // Disable buttons while loading
@@ -1052,10 +1058,12 @@ export default function App() {
                         size="lg"
                         colorScheme="blue"
                         onTouchStart={() => {
+                            console.log("Backward button touchStart: setting moveBackward.current to true");
                             moveBackward.current = true;
                             moveForward.current = false; // Ensure only one is true
                         }}
                         onTouchEnd={() => {
+                            console.log("Backward button touchEnd: setting moveBackward.current to false");
                             moveBackward.current = false;
                         }}
                         isDisabled={isLoading} // Disable buttons while loading
