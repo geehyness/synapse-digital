@@ -8,7 +8,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 
 // NEW: Look Speed variable at the top
-const lookSpeed = 0.2; // Adjustable look speed
+const lookSpeed = 0.4; // Adjustable look speed
 
 // Hook to detect portrait orientation
 function useIsPortrait() {
@@ -350,14 +350,23 @@ export default function App() {
         // Ground Plane (Visual)
         const groundGeometry = new THREE.PlaneGeometry(50, 50, 1, 1); // 50x50m plane
 
-        const grassTexture = textureLoader.load('/textures/grass_color.jpg');
+        const grassTexture = textureLoader.load('/textures/ground/grass_color.jpg');
         grassTexture.wrapS = THREE.RepeatWrapping;
         grassTexture.wrapT = THREE.RepeatWrapping;
-        grassTexture.repeat.set(2, 2); // Adjust repeat values as needed for good tiling
+        grassTexture.repeat.set(20, 20); // Adjust repeat values as needed for good tiling
+
+        // NEW: Load the normal map texture
+        const grassNormalMap = textureLoader.load('/textures/ground/grass_normal.jpg'); // Assuming you have a grass_normal.jpg
+        grassNormalMap.wrapS = THREE.RepeatWrapping;
+        grassNormalMap.wrapT = THREE.RepeatWrapping;
+        grassNormalMap.repeat.set(20, 20); // Important: Match the repeat of the color texture
 
         const groundVisualMaterial = new THREE.MeshStandardMaterial({
-            map: grassTexture
+            map: grassTexture,
+            // NEW: Assign the normal map
+            normalMap: grassNormalMap
         });
+
         const groundMesh = new THREE.Mesh(groundGeometry, groundVisualMaterial);
         groundMesh.rotation.x = -Math.PI / 2; // Rotate to be flat
         groundMesh.receiveShadow = true;
