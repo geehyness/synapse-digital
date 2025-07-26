@@ -677,8 +677,8 @@ export default function App() {
 
         // Apply look delta
         if (lookDelta.current.x !== 0 || lookDelta.current.y !== 0) {
-            yaw.current.rotation.y -= lookDelta.current.x * 0.005;
-            pitch.current.rotation.x -= lookDelta.current.y * 0.005;
+            yaw.current.rotation.y -= lookDelta.current.x * 0.05;
+            pitch.current.rotation.x -= lookDelta.current.y * 0.05;
             pitch.current.rotation.x = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch.current.rotation.x));
             lookDelta.current.x = lookDelta.current.y = 0; // Reset lookDelta after applying
         }
