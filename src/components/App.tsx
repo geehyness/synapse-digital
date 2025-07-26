@@ -8,7 +8,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 
 // NEW: Look Speed variable at the top
-const lookSpeed = 0.05; // Adjustable look speed
+const lookSpeed = 0.02; // Adjustable look speed
 
 // Hook to detect portrait orientation
 function useIsPortrait() {
