@@ -14,27 +14,27 @@ import { FiGithub, FiLinkedin, FiTwitter } from 'react-icons/fi';
 import { PortableText, PortableTextReactComponents } from '@portabletext/react';
 
 const DEFAULT_CONFIG = {
-  starCount: 50, // Default star count
+  starCount: 80,
   minSize: 2,
   maxSize: 10,
   minDepth: 0.1,
   maxDepth: 50.0,
-  baseSpeed: 0.000008, // Slightly reduced for slower overall movement
-  momentumDecay: 0.8,
-  scrollSensitivity: 0.001, // Default scroll sensitivity
+  baseSpeed: 0.000008,
+  momentumDecay: 0.5,
+  scrollSensitivity: 0.0001,
   glowIntensity: 0,
-  connectionChance: 0.3,
-  maxConnectionDistance: 100,
+  connectionChance: 0.5,
+  maxConnectionDistance: 150,
   rotationSpeed: 0.001,
-  trailOpacity: 1,
+  trailOpacity: 0.6,
   blackHole: {
-    isEnabled: true,
-    mass: 100,
+    isEnabled: false,
+    mass: 150,
     gravity: 0.18,
     attractionRadius: 800,
     spin: 1,
     accretionDisk: true,
-    escapeMomentumThreshold: 20, // This threshold is now less about "escape" and more about internal logic for "sucking up"
+    escapeMomentumThreshold: 20,
   }
 };
 
