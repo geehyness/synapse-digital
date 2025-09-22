@@ -21,7 +21,7 @@ const DEFAULT_CONFIG = {
   maxDepth: 50.0,
   baseSpeed: 0.000008,
   momentumDecay: 0.5,
-  scrollSensitivity: 0.0001,
+  scrollSensitivity: 0.005,
   glowIntensity: 0,
   connectionChance: 0.5,
   maxConnectionDistance: 150,
